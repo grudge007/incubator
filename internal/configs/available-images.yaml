@@ -1,0 +1,12 @@
+images:
+  ubuntu:
+    - version: jammy
+      path: /var/incubator/images/jammy-server-cloudimg-amd64.img 
+
+  debian:
+    - version: bullseye
+      path: /var/incubator/images/debian-12-nocloud-amd64.qcow2 
+
+  kali:
+    - version: jammy
+      path: /var/incubator/images/kali-linux-2026.1-cloud-genericcloud-amd64.raw

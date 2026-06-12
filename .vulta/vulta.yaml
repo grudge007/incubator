@@ -1,0 +1,10 @@
+project_name: MyProject
+project_root: /home/iamgrudge/Configs/PE/incubator
+default_user: root
+default_path: /opt/MyProject
+private_key_path: /home/iamgrudge/.ssh/id_rsa
+nodes:
+
+- ip: 192.168.192.24
+  user: root
+  path: /opt/incubator
