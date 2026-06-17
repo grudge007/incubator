@@ -5,18 +5,24 @@ import (
 	"incubator/internal/images"
 	"incubator/internal/qemu"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
 
 const version = "beta-v-01"
+const diskStore = "/var/incubator/disk/"
 
 var createVMOpts qemu.VM
+
+// var ShutdownVMOpts qemu.VM
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(createVMCmd)
 	rootCmd.AddCommand(launchCmd)
+	rootCmd.AddCommand(shutdownCmd)
+	rootCmd.AddCommand(listCmd)
 
 	createVMCmd.Flags().StringVarP(&createVMOpts.Name, "name", "n", "", "Name of resource")
 	createVMCmd.Flags().IntVarP(&createVMOpts.CPUs, "cpu", "c", 1, "CPU")
@@ -78,7 +84,8 @@ var launchCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		images := images.StoreImages()
 		vmName := qemu.GenerateVMName()
-		diskName := fmt.Sprintf("%s.qcow2", vmName)
+		// diskName := fmt.Sprintf("%s.qcow2", vmName)
+		diskName := filepath.Join(diskStore, vmName, vmName+".qcow2")
 
 		createVMOpts = qemu.VM{
 			Name:          vmName,
@@ -89,6 +96,7 @@ var launchCmd = &cobra.Command{
 			CloudInitFile: "/var/incubator/cloudinit/default.yaml",
 			DiskPath:      diskName,
 			Image:         args[0],
+			Status:        "running",
 		}
 		m := qemu.NewVMManager()
 		err := m.CreateVM(createVMOpts, images)
@@ -97,6 +105,36 @@ var launchCmd = &cobra.Command{
 		}
 
 		fmt.Println("VM created successfully!")
+		return nil
+	},
+}
+
+var shutdownCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Poweroff Resource",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		resourceName := args[0]
+		m := qemu.NewVMManager()
+		err := m.ShutdownVM(resourceName)
+		if err != nil {
+			return fmt.Errorf("qemu failed to stop vm: %w", err)
+		}
+		fmt.Println("VM stopped successfully!")
+		return nil
+
+	},
+}
+
+var listCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List Resources",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		m := qemu.NewVMManager()
+		err := m.ListResources()
+		if err != nil {
+			return fmt.Errorf("qemu failed to list resources: %w", err)
+		}
 		return nil
 	},
 }

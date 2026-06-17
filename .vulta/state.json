@@ -7,8 +7,8 @@
      "last_push": "2026-06-09T09:52:52+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/COMMIT_EDITMSG": {
-     "hash": "32ca56b16d497bbfb5789cf52aba9fd679b42f09786031555f8c122c1c3abb63",
-     "last_push": "2026-06-09T09:52:52+05:30"
+     "hash": "a4ac939b33d3d47e07d02ca87fe877db7d270508844c5081adde9cec0548d00f",
+     "last_push": "2026-06-12T14:52:37+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/HEAD": {
      "hash": "28d25bf82af4c0e2b72f50959b2beb859e3e60b9630a5e8c603dad4ddb2b6e80",
@@ -79,60 +79,140 @@
      "last_push": "2026-06-09T09:52:52+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/index": {
-     "hash": "14b0b8cb0bad6101cf7a3128e5f0ec812775f11a75234fd839889682efd0fd96",
-     "last_push": "2026-06-09T09:52:52+05:30"
+     "hash": "6ab2da041d24f223f7d8ccf6903c788059ff361d5ea58df440db3396ba550034",
+     "last_push": "2026-06-12T14:52:37+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/info/exclude": {
      "hash": "6671fe83b7a07c8932ee89164d1f2793b2318058eb8b98dc5c06ee0a5a3b0ec1",
      "last_push": "2026-06-09T09:52:52+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/logs/HEAD": {
-     "hash": "ddbedd6580cc9e336028ea83cbdd3dd63b7c98924ba5f436ffcc5c5ddcde9af8",
-     "last_push": "2026-06-09T09:52:52+05:30"
+     "hash": "2d4cf70a93528a4824928c4c6305409eeb3d04399aa1edfb5a6db6e9d50d421b",
+     "last_push": "2026-06-12T14:52:37+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/logs/refs/heads/main": {
-     "hash": "adbcd3c783d1605a325e60b8e800058a28b2f86212b855b6afb5944aa59e29e5",
-     "last_push": "2026-06-09T09:52:52+05:30"
+     "hash": "2f468d5c0ec2b7555548f3ca383e0dd1d887862c7f42b929d8f8f4c8902d67e9",
+     "last_push": "2026-06-12T14:52:37+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/logs/refs/remotes/origin/main": {
-     "hash": "d95d230ab9cdc931456c5fa1e4bcc4c42bcc5add15411ef24fdcfc8fe3fd7bc8",
-     "last_push": "2026-06-09T09:52:52+05:30"
+     "hash": "19a296324ffead6d482661fb593742049a49623bc22ad0f0de13634549ec08ab",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/0c/4ae3bf8bf20e76a39356f7a12dbfd32b3d9a6f": {
+     "hash": "142fad2e03e185b5c6c8cb21c78cdd01e202fb90ac9cd596e73366c79a9afc97",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/19/4ade7ea82d3547133d038567fafcc39a60af69": {
+     "hash": "08e28a5e3c9ff7f52b338628119e01c7fea86dc7b6bf5dcf226661258449595c",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/1c/8208e1b06f6141273111c943705a75157fd672": {
+     "hash": "a5644d9c33d05cbcadc6b92d053b1ae2884dbd948b9464d22635f23fb6b27c2c",
+     "last_push": "2026-06-12T14:52:37+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/objects/25/9463ab4cf668911229fa95f007a6fba659451f": {
      "hash": "6e3b119e688e65e15091e9a0c8a5cc0012155f63c13830f9c2d572833484cc34",
      "last_push": "2026-06-09T09:52:52+05:30"
     },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/42/fb421cbfaa064f815e8e6e898f9e56f1cc9a46": {
+     "hash": "2c1a1fcab4d905a3881773d34fef1979d336381992a5a5ec1dd5c0aba24bab80",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/45/945e4881db503a541f7f9d7d2b3769b47adace": {
+     "hash": "a3a1fd014b00d7d521425962b610a716da2560075cf07f46ad5217289f86be43",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/4f/5dc1bb0167f032157cb3592b82d27b205abd90": {
+     "hash": "b23fb1ae00a57d25b0e2dfd8a5b5daf56e7fcdf9edadd4d45265e8e660b15f0c",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/58/cd679134d557f15599378579699e5834de5274": {
+     "hash": "284d8417299c89696e0babdd96c2d682fcbb026d607843acf785ce11cd10c241",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/6e/8def8397f8a2ae0cc72d83322760424749d9d6": {
+     "hash": "b04f4841bd8600b0261855943f2a080b3d2dc91febfb4b04f6c5209f86a99f5b",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/6f/4952cc331e1f6e620d37d43e45d1c6e2a8690e": {
+     "hash": "931f191136f1cee6e50aa1647cbc63033dd6be21b2cd9c95cf3bef54750fee07",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/77/d6ac6d17c64457186a4605b2c064828751da5c": {
+     "hash": "fc99cba60852b2c672981554687492a3a5f3a861d67f5fc9bbd474b5d01da662",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
     "/home/iamgrudge/Configs/PE/incubator/.git/objects/7b/d9535127481a3fee11331219a6dde4fcc7fb01": {
      "hash": "3261d59de70ea87e0c403bf5b88622a98663c86773013a3c1f6a842773acf33e",
      "last_push": "2026-06-09T09:52:52+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/7d/5450b284806da0edebdf63e708197c503315f7": {
+     "hash": "b3fe0dbfa9347b84b56c0ecdd8345f31b03c4afd417216e8bd54cd7c2ea48e1c",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/85/80d03b9d97024662cc6a62fe06b26d05d1727e": {
+     "hash": "30a7427dbd1f556763e936c4fb3734c34b165272d41bb83737590a5b90003042",
+     "last_push": "2026-06-12T14:52:37+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/objects/ad/774aa0e5e27b215bc1ee1ea3d5ebbb8e9ec79e": {
      "hash": "abf4c3477440847f931b68723e36efca8012c2d3a0810a2729b17f8b9c4b99f2",
      "last_push": "2026-06-09T09:52:52+05:30"
     },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/b0/4ffaa1538d7ce9470f1146b31feff3a85aef44": {
+     "hash": "80abfe4259d5a5e65f8d447a3305f2b59466e06b9d7c255d9a64388dfafb02ef",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/cb/b55bdd04832d51a57fdc4fa63b2743a8e161e6": {
+     "hash": "67f93f793f9e053f4dd22d28e7b45a957ad0f0e49d6bd991d9e2830d00b1c74a",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/d2/0b601927a3fcccf87b61f824805a5028b989e4": {
+     "hash": "916d5acf5efb52860ca5a5fce722f40019bee51a757a6310cc4f2f6c49a31575",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/d3/3237a5aa7cfbf83db54c4f659bbd4493fd09cc": {
+     "hash": "2062d998f4b6c59a0335353d986fba211797113f741e48aa87cab7231fd9f9b1",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/ef/b8fdd82f16c67041175cb97718551b3d6d6ade": {
+     "hash": "c6a728e046d11500d433f66776a9144862b35a5921459852696229a95d3a0fae",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/fa/7a3f48dcb74fad2ff2d041bad75c5f20fda1d5": {
+     "hash": "3262c5e05b5e164d196ba8a1303393acea22d077305c0b99249be5adddc2e094",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.git/objects/ff/4d6eccc9d1ca21326eac09621060593555cb85": {
+     "hash": "6d442ccf286a93d10c3bee03d75afa273fc7aa3787f54481ffe6bc8b71eba9cf",
+     "last_push": "2026-06-12T14:52:37+05:30"
+    },
     "/home/iamgrudge/Configs/PE/incubator/.git/refs/heads/main": {
-     "hash": "4538a2c771f6c6c9f9c55798d3575e48f854bafc88fbf4ea3fb5b56edd20532d",
-     "last_push": "2026-06-09T09:52:52+05:30"
+     "hash": "9407e98f74c2ea8714e83f61d56e5a0ac7d1acd3d0e34649d86fb3b0b5b09b4a",
+     "last_push": "2026-06-12T14:52:37+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.git/refs/remotes/origin/main": {
-     "hash": "4538a2c771f6c6c9f9c55798d3575e48f854bafc88fbf4ea3fb5b56edd20532d",
-     "last_push": "2026-06-09T09:52:52+05:30"
+     "hash": "9407e98f74c2ea8714e83f61d56e5a0ac7d1acd3d0e34649d86fb3b0b5b09b4a",
+     "last_push": "2026-06-12T14:52:37+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.vulta/state.json": {
-     "hash": "794a1925d52a58122670c1bb27285b70b95fb8e65a70bce9dc58781bfe750798",
-     "last_push": "2026-06-12T14:43:05+05:30"
+     "hash": "3889cb6080e184c6f278889624e489789f7ff8c22fc2a3d42bc44638dcf1f342",
+     "last_push": "2026-06-17T14:20:42+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/.vulta/vulta.yaml": {
      "hash": "29687a26c5e801e4ef9e861f484866cb7e9d18f765e6f96bb9fdfc91f54eb6b2",
      "last_push": "2026-06-09T09:52:52+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/.vulta/vultaignore": {
+     "hash": "fd03f16fc5ad8be70d6e0491fa2e029bc4a31f5b0de6d4adf8e7dd709d23840f",
+     "last_push": "2026-06-12T15:13:36+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/README.md": {
      "hash": "0386a2b093aee6c11763b30e3d251d4de030997ba6e0a3c98873bccda8fb6de5",
      "last_push": "2026-06-09T09:52:52+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/cmd/server/main.go": {
-     "hash": "78853b1052ff9238d2acb2a02bce168f8c8f6c89c3599ccb6c5df8278fec0699",
-     "last_push": "2026-06-09T22:51:03+05:30"
+     "hash": "15313ef47c887956cb41624dded6274f8efb9b1faf0d0f50b0f9361ef980bfe8",
+     "last_push": "2026-06-17T14:18:05+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/go.mod": {
      "hash": "5ae949426cf42d815e36fd317023e8a4c9609ccaca5cdbdbf1946e245d8a3d1f",
@@ -151,12 +231,16 @@
      "last_push": "2026-06-09T22:52:13+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/internal/qemu/lifecycle.go": {
-     "hash": "630ee1b56dbfe85edc8808f4e30253ff763bbf9de055bfdb8c6fa2a40d9e850e",
-     "last_push": "2026-06-09T22:55:06+05:30"
+     "hash": "dea37ffeb3e0301271e94d930b9d8c66af5f28057b23271def40094ba960e62a",
+     "last_push": "2026-06-17T14:20:42+05:30"
     },
     "/home/iamgrudge/Configs/PE/incubator/internal/qemu/nomen.go": {
      "hash": "4831597f2781aea34575a901d892bde73eb7dbcb036bbee477709c25695d031d",
      "last_push": "2026-06-09T22:50:16+05:30"
+    },
+    "/home/iamgrudge/Configs/PE/incubator/lab/main.go": {
+     "hash": "b756709f71787a160b669de038780ef5af57631da48a41c68c5523d03b82e6f3",
+     "last_push": "2026-06-16T17:54:10+05:30"
     }
    }
   }
