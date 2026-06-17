@@ -23,11 +23,13 @@ func init() {
 	rootCmd.AddCommand(launchCmd)
 	rootCmd.AddCommand(shutdownCmd)
 	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(destroyCmd)
+	rootCmd.AddCommand(startCmd)
 
 	createVMCmd.Flags().StringVarP(&createVMOpts.Name, "name", "n", "", "Name of resource")
 	createVMCmd.Flags().IntVarP(&createVMOpts.CPUs, "cpu", "c", 1, "CPU")
 	createVMCmd.Flags().IntVarP(&createVMOpts.MemoryMB, "memory", "m", 1024, "Memory")
-	createVMCmd.Flags().IntVarP(&createVMOpts.SSHPort, "ssh_port", "s", 2022, "SSH Port")
+	createVMCmd.Flags().IntVarP(&createVMOpts.VNC, "vnc", "v", 2022, "VNC Port")
 	createVMCmd.Flags().IntVarP(&createVMOpts.DiskSize, "disk", "d", 10, "Disk Size In G")
 	createVMCmd.Flags().StringVarP(&createVMOpts.Image, "image", "i", "", "OS Image")
 	createVMCmd.Flags().StringVar(&createVMOpts.CloudInitFile, "cloudinit", "", "Cloud Init File")
@@ -39,7 +41,7 @@ func init() {
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		// fmt.Println(err)
 		os.Exit(1)
 	}
 
@@ -91,7 +93,6 @@ var launchCmd = &cobra.Command{
 			Name:          vmName,
 			MemoryMB:      2048,
 			CPUs:          1,
-			SSHPort:       5022,
 			DiskSize:      20,
 			CloudInitFile: "/var/incubator/cloudinit/default.yaml",
 			DiskPath:      diskName,
@@ -135,6 +136,38 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("qemu failed to list resources: %w", err)
 		}
+		return nil
+	},
+}
+
+var destroyCmd = &cobra.Command{
+	Use:   "destroy",
+	Short: "Destroy Resource",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		m := qemu.NewVMManager()
+		resourceName := args[0]
+		err := m.DestroyResource(resourceName)
+		if err != nil {
+			return fmt.Errorf("qemu failed to destroy resource: %w\n", err)
+		}
+		fmt.Printf("Succesfully Destroyed Resource, %s\n", resourceName)
+		return nil
+	},
+}
+
+var startCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start Resource",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		m := qemu.NewVMManager()
+		resourceName := args[0]
+		err := m.StartVM(resourceName)
+		if err != nil {
+			return fmt.Errorf("qemu failed to start resource: %w\n", err)
+		}
+		fmt.Printf("Succesfully Started Resource, %s\n", resourceName)
 		return nil
 	},
 }

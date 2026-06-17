@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"syscall"
 	"time"
@@ -20,7 +21,7 @@ type VM struct {
 	PID           int    `json:"pid"`
 	CPUs          int    `json:"cpu"`
 	MemoryMB      int    `json:"memory_mb"`
-	SSHPort       int    `json:"ssh_port"`
+	VNC           int    `json:"vnc"`
 	DiskSize      int    `json:"disk_size"`
 	Name          string `json:"resource_name"`
 	DiskPath      string `json:"disk_path"`
@@ -74,7 +75,7 @@ func NewVMManager() *VMManager {
 func (vm *VMManager) CreateVM(vmDetails VM, availableImages images.AvailableImages) error {
 	memStr := strconv.Itoa(vmDetails.MemoryMB)
 	cpuStr := strconv.Itoa(vmDetails.CPUs)
-	sshFwd := fmt.Sprintf("tcp::%d-:22", vmDetails.SSHPort)
+	// sshFwd := fmt.Sprintf("tcp::%d-:22", vmDetails.SSHPort)
 	driveArg := fmt.Sprintf("file=%s,format=qcow2,media=disk", vmDetails.DiskPath)
 	diskName := vmDetails.DiskPath
 
@@ -108,13 +109,13 @@ func (vm *VMManager) CreateVM(vmDetails VM, availableImages images.AvailableImag
 		"-cpu", "host",
 		"-drive", driveArg,
 		"-drive", "file=seed.img,format=raw,media=cdrom",
-		"-netdev", "user,id=n1,hostfwd="+sshFwd,
-		"-device", "virtio-net-pci,netdev=n1",
+		// "-netdev", "user,id=n1,hostfwd="+sshFwd,
+		// "-device", "virtio-net-pci,netdev=n1",
 		// "-nographic",
 		"-display", "none", // Disables the local QEMU window on the host
-		"-vnc", "0.0.0.0:1",
+		// "-vnc", "0.0.0.0:1",
 	)
-	fmt.Println(cmd)
+	// fmt.Println(cmd)
 	err = cmd.Start()
 	if err != nil {
 		return err
@@ -219,7 +220,74 @@ func StoreMetadata(vmDetails VM) error {
 }
 
 //
+// #
+// Start VM
+// #
+//
+
+func (wm *VMManager) StartVM(resourceName string) error {
+	var meta []META
+	var memStr string
+	var cpuStr string
+	var driveArg string
+	data, err := os.ReadFile(metaData)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, &meta)
+	if err != nil {
+		return err
+	}
+	for i := range meta {
+		if meta[i].ResourceName == resourceName {
+			if meta[i].MetaData.Status == "running" {
+				return fmt.Errorf("Resource is already running")
+			}
+			memStr = strconv.Itoa(meta[i].MetaData.MemoryMB)
+			cpuStr = strconv.Itoa(meta[i].MetaData.CPUs)
+			driveArg = fmt.Sprintf("file=%s,format=qcow2,media=disk", meta[i].MetaData.DiskPath)
+		}
+	}
+
+	cmd := exec.Command(
+		"qemu-system-x86_64",
+		"-enable-kvm",
+		"-m", memStr,
+		"-name", resourceName,
+		"-smp", cpuStr,
+		"-cpu", "host",
+		"-drive", driveArg,
+		"-drive", "file=seed.img,format=raw,media=cdrom",
+		// "-netdev", "user,id=n1,hostfwd="+sshFwd,
+		// "-device", "virtio-net-pci,netdev=n1",
+		// "-nographic",
+		"-display", "none", // Disables the local QEMU window on the host
+		"-vnc", "0.0.0.0:1",
+	)
+	// fmt.Println(cmd)
+	err = cmd.Start()
+	if err != nil {
+		return err
+	}
+	for i := range meta {
+		if meta[i].ResourceName == resourceName {
+			meta[i].MetaData.PID = cmd.Process.Pid
+			meta[i].MetaData.Status = "running"
+		}
+	}
+	updateData, err := json.MarshalIndent(meta, "", " ")
+	err = os.WriteFile(metaData, updateData, 0666)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+//
+// #
 //  ShutDown
+// #
 //
 
 func (vm *VMManager) ShutdownVM(resourceName string) error {
@@ -235,6 +303,10 @@ func (vm *VMManager) ShutdownVM(resourceName string) error {
 	proc.Signal(syscall.SIGTERM)
 	for range 5 {
 		if !isProcessRunning(pid) {
+			err = updateMeta(resourceName)
+			if err != nil {
+				return err
+			}
 			return nil
 		}
 		time.Sleep(5 * time.Second)
@@ -242,7 +314,10 @@ func (vm *VMManager) ShutdownVM(resourceName string) error {
 	if isProcessRunning(pid) {
 		proc.Signal(syscall.SIGKILL)
 	}
-	updateMeta(resourceName)
+	err = updateMeta(resourceName)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -259,6 +334,9 @@ func findResourcePID(resourceName string) (int, error) {
 	}
 	for _, item := range meta {
 		if item.ResourceName == resourceName {
+			if item.MetaData.Status == "stopped" {
+				return 0, fmt.Errorf("Resource is not running")
+			}
 			return item.MetaData.PID, nil // Found it!
 		}
 	}
@@ -280,17 +358,20 @@ func isProcessRunning(pid int) bool {
 }
 
 func updateMeta(resourceName string) error {
-	var meta []META
+	var meta []*META
 	data, err := os.ReadFile(metaData)
 	if err == nil && len(data) > 0 {
 		if err = json.Unmarshal(data, &meta); err != nil {
 			return fmt.Errorf("failed to parse existing JSON: %w", err)
 		}
 	}
-	for _, item := range meta {
-		if item.ResourceName == resourceName {
-			item.MetaData.Status = "stopped"
+	for i := range meta {
+		if meta[i].ResourceName == resourceName {
+			meta[i].MetaData.Status = "stopped"
+			meta[i].MetaData.PID = 0
+			break
 		}
+
 	}
 	updateData, err := json.MarshalIndent(meta, "", " ")
 	if err != nil {
@@ -303,9 +384,61 @@ func updateMeta(resourceName string) error {
 	return nil
 }
 
+//	#
+//
+// Destroy VM
+//
+//	#
+func (vm *VMManager) DestroyResource(resourceName string) error {
+	var meta []META
+	var found bool
+	data, err := os.ReadFile(metaData)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(data, &meta)
+	if err != nil {
+		return err
+	}
+	for i := range meta {
+		if meta[i].ResourceName == resourceName {
+			if meta[i].MetaData.Status == "running" {
+				return fmt.Errorf("%s state is running", resourceName)
+			}
+
+			meta = slices.Delete(meta, i, i+1)
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("%s does not exist\n", resourceName)
+	}
+	// 3. FIX: Save the shrunken slice back to the JSON file!
+	updateData, err := json.MarshalIndent(meta, "", " ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated metadata: %w", err)
+	}
+
+	err = os.WriteFile(metaData, updateData, 0666)
+	if err != nil {
+		return fmt.Errorf("failed to save metadata file: %w", err)
+	}
+
+	path := filepath.Join(diskStore, resourceName)
+	err = os.RemoveAll(path)
+	if err != nil {
+		return fmt.Errorf("metadata updated, but failed to delete disk path %s: %w", path, err)
+	}
+
+	return nil
+}
+
+//#
 //
 // List VMs
 //
+//#
 
 func (vm *VMManager) ListResources() error {
 	var meta []META
@@ -337,7 +470,7 @@ func (vm *VMManager) ListResources() error {
 	for _, v := range list {
 		fmt.Printf("%-25s %-15d %-15s %-15s\n", v.Name, v.PID, v.Image, v.Status)
 	}
-	fmt.Println("======================================================================")
+	// fmt.Println("======================================================================")
 
 	return nil
 }
