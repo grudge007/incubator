@@ -1,6 +1,7 @@
 package qemu
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"syscall"
@@ -15,6 +16,9 @@ func (q *QEMU) ShutdownVM(pid int) error {
 
 	err = proc.Signal(syscall.SIGTERM)
 	if err != nil {
+		if errors.Is(err, os.ErrProcessDone) || err.Error() == "os: process already finished" {
+			return nil
+		}
 		return err
 	}
 

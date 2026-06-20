@@ -143,8 +143,36 @@ func (d *DB) FetchPid(resourceId string) (int, error) {
 	return pid, nil
 }
 
-func (d *DB) UpdateResourceStatus(resourceId, status string) error {
-	query := fmt.Sprintf("UPDATE metadata SET status = '%s' WHERE resource_id = ?", status)
+func (d *DB) UpdateResourceStatusAndPid(resourceId, status string, pid int) error {
+	query := "UPDATE metadata SET status = ?, process_id = ? WHERE resource_id = ?"
+
+	_, err := d.Cli.Exec(query, status, pid, resourceId)
+	if err != nil {
+		return fmt.Errorf("failed to change resource status and pid %v", err)
+	}
+	return nil
+}
+
+func (d *DB) FetchVmdetails(resourceId string) (model.VM, error) {
+	query := "SELECT memory, resource_name, cpu, disk_path, cloud_init, vnc_port FROM metadata WHERE resource_id = ?"
+	var vmDetails model.VM
+
+	err := d.Cli.QueryRow(query, resourceId).Scan(
+		&vmDetails.MemoryMB,
+		&vmDetails.Name,
+		&vmDetails.CPUs,
+		&vmDetails.BootDisk,
+		&vmDetails.CloudInitFile,
+		&vmDetails.VNC,
+	)
+	if err != nil {
+		return vmDetails, fmt.Errorf("failed to fetch details")
+	}
+	return vmDetails, nil
+}
+
+func (d *DB) UpdateResourcePid(resourceId string, pid int) error {
+	query := fmt.Sprintf("UPDATE metadata SET status = '%d' WHERE process_id = ?", pid)
 
 	_, err := d.Cli.Exec(query, resourceId)
 	if err != nil {

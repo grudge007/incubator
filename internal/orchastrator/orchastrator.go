@@ -98,8 +98,35 @@ func (o *Orchastrator) ShutdownVMHandler(resourceID string) error {
 		return err
 	}
 
-	if err = o.Storage.UpdateResourceStatus(resourceID, "stopped"); err != nil {
-		return fmt.Errorf("hypervisor stopped but failed to update DB state: %w", err)
+	if err = o.Storage.UpdateResourceStatusAndPid(resourceID, "stopped", 0); err != nil {
+		return fmt.Errorf("resource stopped but failed to update DB state: %w", err)
+	}
+
+	return nil
+}
+
+func (o *Orchastrator) StartVMHandler(resourceId string) error {
+	status, err := o.Storage.ResourceStatus(resourceId)
+	if err != nil {
+		return err
+	}
+
+	if status != "stopped" {
+		return fmt.Errorf("Err: Cannot start resource, status is in %s", status)
+	}
+	vmDetails, err := o.Storage.FetchVmdetails(resourceId)
+	if err != nil {
+		return err
+	}
+
+	pid, err := o.Qemu.StartVM(vmDetails)
+
+	if err != nil {
+		return err
+	}
+
+	if err = o.Storage.UpdateResourceStatusAndPid(resourceId, "running", pid); err != nil {
+		return fmt.Errorf("resource started but failed to update DB state: %w", err)
 	}
 
 	return nil
