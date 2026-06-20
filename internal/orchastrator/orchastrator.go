@@ -52,3 +52,55 @@ func (o *Orchastrator) CreateVMHandler() error {
 	fmt.Printf("Resp: %v", vmResp)
 	return nil
 }
+
+func (o *Orchastrator) DestroyVMHandler(resourceID string) error {
+	var err error
+
+	if o.VM.Status, err = o.Storage.ResourceStatus(resourceID); err != nil {
+		return err
+	}
+
+	if o.VM.Status != "stopped" {
+		return fmt.Errorf("Err: Resource is running")
+	}
+
+	if err = o.Qemu.DestroyVM(resourceID); err != nil {
+		return err
+	}
+
+	if err = o.Storage.DeleteResource("metadata", "resource_id", resourceID); err != nil {
+		return err
+	}
+	return nil
+
+}
+
+func (o *Orchastrator) ShutdownVMHandler(resourceID string) error {
+
+	status, err := o.Storage.ResourceStatus(resourceID)
+	if err != nil {
+		return err
+	}
+
+	if status == "stopped" {
+		return fmt.Errorf("Err: Resource is already in stopped state")
+	}
+
+	pid, err := o.Storage.FetchPid(resourceID)
+	if err != nil {
+		return err
+	}
+	if pid <= 0 {
+		return fmt.Errorf("cannot shutdown: invalid or missing PID (%d) for resource %s", pid, resourceID)
+	}
+
+	if err = o.Qemu.ShutdownVM(pid); err != nil {
+		return err
+	}
+
+	if err = o.Storage.UpdateResourceStatus(resourceID, "stopped"); err != nil {
+		return fmt.Errorf("hypervisor stopped but failed to update DB state: %w", err)
+	}
+
+	return nil
+}

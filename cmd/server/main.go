@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const version = "beta-v-01"
+const version = "beta-v-02"
 
 var createVMOpts model.VM
 var db *storage.DB
@@ -19,6 +19,8 @@ var db *storage.DB
 func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(createVMCmd)
+	rootCmd.AddCommand(destroyCmd)
+	rootCmd.AddCommand(shutdownCmd)
 
 	createVMCmd.Flags().StringVar(&createVMOpts.Name, "name", "auto", "VM name")
 	createVMCmd.Flags().IntVar(&createVMOpts.CPUs, "cpu", 2, "Number of vCPUs")
@@ -75,21 +77,39 @@ var createVMCmd = &cobra.Command{
 	},
 }
 
-// var destroyCmd = &cobra.Command{
-// 	Use:   "destroy",
-// 	Short: "Destroy Resource",
-// 	Args:  cobra.ExactArgs(1),
-// 	RunE: func(cmd *cobra.Command, args []string) error {
-// 		m := qemu.NewVMManager()
-// 		resourceName := args[0]
-// 		err := m.DestroyResource(resourceName)
-// 		if err != nil {
-// 			return fmt.Errorf("qemu failed to destroy resource: %w\n", err)
-// 		}
-// 		fmt.Printf("Succesfully Destroyed Resource, %s\n", resourceName)
-// 		return nil
-// 	},
-// }
+var destroyCmd = &cobra.Command{
+	Use:   "destroy",
+	Short: "Destroy Resource",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		o := orchastrator.VMManager(db, &createVMOpts)
+
+		resourceId := args[0]
+		err := o.DestroyVMHandler(resourceId)
+		if err != nil {
+			return fmt.Errorf("qemu failed to destroy resource: %w\n", err)
+		}
+		fmt.Printf("Succesfully Destroyed Resource, %s\n", resourceId)
+		return nil
+	},
+}
+
+var shutdownCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Poweroff Resource",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		o := orchastrator.VMManager(db, &createVMOpts)
+		resourceId := args[0]
+		err := o.ShutdownVMHandler(resourceId)
+		if err != nil {
+			return fmt.Errorf("qemu failed to stop vm: %w", err)
+		}
+		fmt.Println("VM stopped successfully!")
+		return nil
+
+	},
+}
 
 // var launchCmd = &cobra.Command{
 // 	Use:   "launch",

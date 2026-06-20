@@ -112,3 +112,43 @@ func (d *DB) AllocateVNCPort() (int, error) {
 	fmt.Printf("\nVNC FROM ORCA: %d\n", display)
 	return display, nil
 }
+
+func (d *DB) ResourceStatus(resourceId string) (string, error) {
+	query := `SELECT status FROM metadata WHERE resource_id = ?`
+	var status string
+
+	err := d.Cli.QueryRow(query, resourceId).Scan(&status)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch vm status")
+	}
+	return status, nil
+}
+
+func (d *DB) DeleteResource(tableName, columnName, resourceId string) error {
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = ?", tableName, columnName)
+
+	if _, err := d.Cli.Exec(query, resourceId); err != nil {
+		return fmt.Errorf("failed to delete vm, %v", err)
+	}
+	return nil
+}
+
+func (d *DB) FetchPid(resourceId string) (int, error) {
+	var pid int
+	query := `SELECT process_id FROM metadata WHERE resource_id = ?`
+
+	if err := d.Cli.QueryRow(query, resourceId).Scan(&pid); err != nil {
+		return 0, fmt.Errorf("failed to fetch pid, %v", err)
+	}
+	return pid, nil
+}
+
+func (d *DB) UpdateResourceStatus(resourceId, status string) error {
+	query := fmt.Sprintf("UPDATE metadata SET status = '%s' WHERE resource_id = ?", status)
+
+	_, err := d.Cli.Exec(query, resourceId)
+	if err != nil {
+		return fmt.Errorf("failed to change resource status, %v", err)
+	}
+	return nil
+}
