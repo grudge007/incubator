@@ -180,3 +180,61 @@ func (d *DB) UpdateResourcePid(resourceId string, pid int) error {
 	}
 	return nil
 }
+
+func (d *DB) ListAllResource() ([]model.VM, error) {
+	query := "SELECT memory, resource_name, cpu, vnc_port, os_image, process_id, resource_id, status, disk_size FROM metadata"
+	var vms []model.VM
+
+	rows, err := d.Cli.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch details")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var vmDetails model.VM
+		err := rows.Scan(
+			&vmDetails.MemoryMB,
+			&vmDetails.Name,
+			&vmDetails.CPUs,
+			&vmDetails.VNC,
+			&vmDetails.Image,
+			&vmDetails.PID,
+			&vmDetails.ResourceID,
+			&vmDetails.Status,
+			&vmDetails.DiskSize,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		vms = append(vms, vmDetails)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	return vms, nil
+}
+
+func (d *DB) ListSingleResource(resourceId string) ([]model.VM, error) {
+	var vms []model.VM
+	var vmDetails model.VM
+
+	query := "SELECT memory, resource_name, cpu, vnc_port, os_image, process_id, resource_id, status, disk_size FROM metadata WHERE resource_id = ?"
+	err := d.Cli.QueryRow(query, resourceId).Scan(
+		&vmDetails.MemoryMB,
+		&vmDetails.Name,
+		&vmDetails.CPUs,
+		&vmDetails.VNC,
+		&vmDetails.Image,
+		&vmDetails.PID,
+		&vmDetails.ResourceID,
+		&vmDetails.Status,
+		&vmDetails.DiskSize,
+	)
+	vms = append(vms, vmDetails)
+	if err != nil {
+		return vms, fmt.Errorf("failed to scan row: %w", err)
+	}
+	return vms, nil
+}

@@ -6,6 +6,7 @@ import (
 	"incubator/internal/naming"
 	"incubator/internal/qemu"
 	"incubator/internal/storage"
+	"log"
 )
 
 type Orchastrator struct {
@@ -129,5 +130,55 @@ func (o *Orchastrator) StartVMHandler(resourceId string) error {
 		return fmt.Errorf("resource started but failed to update DB state: %w", err)
 	}
 
+	return nil
+}
+
+func (o *Orchastrator) ListResources(resourceId string) error {
+	var vms []model.VM
+	var err error
+	var show_empty bool
+	if resourceId == "" {
+		vms, err = o.Storage.ListAllResource()
+		if err != nil {
+			log.Fatalf("Error getting VM list: %v", err)
+		}
+
+	} else {
+		vms, err = o.Storage.ListSingleResource(resourceId)
+		if err != nil {
+			// return fmt.Errorf("Error getting VM list: %v", err)
+			show_empty = true
+		}
+
+	}
+
+	fmt.Println("=================================================================================================================================")
+	fmt.Printf("%-12s %-25s %-6s %-10s %-8s %-12s %-15s %-10s %-10s\n",
+		"RES ID", "VM NAME", "CPUS", "MEMORY", "VNC", "PID", "OS IMAGE", "STATUS", "DISK")
+	fmt.Println("=================================================================================================================================")
+
+	if show_empty || len(vms) == 0 {
+		fmt.Println("                                                    No resources found.                                                          ")
+		fmt.Println("=================================================================================================================================")
+		return nil
+	}
+
+	for _, vm := range vms {
+		// Matching data types:
+		// %-12d (Int ResID), %-18s (String Name), %-6d (Int CPUs), %-10s (Formatted Memory),
+		// %-8d (Int VNC), %-12d (Int PID), %-15s (String Image), %-10s (String Status), %s (Disk Size)
+		fmt.Printf("%-12d %-25s %-6d %-d MB   %-8d %-12d %-15s %-10s %d GB\n",
+			vm.ResourceID,
+			vm.Name,
+			vm.CPUs,
+			vm.MemoryMB,
+			vm.VNC,
+			vm.PID,
+			vm.Image,
+			vm.Status,
+			vm.DiskSize,
+		)
+	}
+	fmt.Println("=================================================================================================================================")
 	return nil
 }

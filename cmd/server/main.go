@@ -22,6 +22,7 @@ func init() {
 	rootCmd.AddCommand(destroyCmd)
 	rootCmd.AddCommand(shutdownCmd)
 	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(listCmd)
 
 	createVMCmd.Flags().StringVar(&createVMOpts.Name, "name", "auto", "VM name")
 	createVMCmd.Flags().IntVar(&createVMOpts.CPUs, "cpu", 2, "Number of vCPUs")
@@ -128,6 +129,25 @@ var startCmd = &cobra.Command{
 	},
 }
 
+var listCmd = &cobra.Command{
+	Use:          "list",
+	Short:        "List Resources",
+	Args:         cobra.MaximumNArgs(1),
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		o := orchastrator.VMManager(db, &createVMOpts)
+		var resourceId string
+		if len(args) > 0 {
+			resourceId = args[0]
+		}
+		err := o.ListResources(resourceId)
+		if err != nil {
+			return fmt.Errorf("qemu failed to list resources: %w", err)
+		}
+		return nil
+	},
+}
+
 // var launchCmd = &cobra.Command{
 // 	Use:   "launch",
 // 	Short: "Launch Resourse",
@@ -173,18 +193,5 @@ var startCmd = &cobra.Command{
 // 		fmt.Println("VM stopped successfully!")
 // 		return nil
 
-// 	},
-// }
-
-// var listCmd = &cobra.Command{
-// 	Use:   "list",
-// 	Short: "List Resources",
-// 	RunE: func(cmd *cobra.Command, args []string) error {
-// 		m := qemu.NewVMManager()
-// 		err := m.ListResources()
-// 		if err != nil {
-// 			return fmt.Errorf("qemu failed to list resources: %w", err)
-// 		}
-// 		return nil
 // 	},
 // }
