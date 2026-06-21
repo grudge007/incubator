@@ -18,6 +18,9 @@ func InitDB() *DB {
 	if err != nil {
 		log.Fatal("Error: DB Connection Failed")
 	}
+
+	db.SetMaxOpenConns(1)
+
 	return &DB{
 		Cli: db,
 	}

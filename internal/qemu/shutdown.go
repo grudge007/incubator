@@ -1,6 +1,7 @@
 package qemu
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,7 +9,7 @@ import (
 	"time"
 )
 
-func (q *QEMU) ShutdownVM(pid int) error {
+func (q *QEMU) ShutdownVM(ctx context.Context, pid int) error {
 	proc, err := os.FindProcess(pid)
 	if err != nil {
 		return err

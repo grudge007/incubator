@@ -1,12 +1,15 @@
 package orchastrator
 
 import (
+	"context"
 	"fmt"
+	"incubator/internal/logger"
 	"incubator/internal/model"
 	"incubator/internal/naming"
 	"incubator/internal/qemu"
 	"incubator/internal/storage"
 	"log"
+	"strconv"
 )
 
 type Orchastrator struct {
@@ -15,141 +18,192 @@ type Orchastrator struct {
 	VM      *model.VM
 }
 
-func VMManager(db *storage.DB, vmDetails *model.VM) *Orchastrator {
+func VMManager(db *storage.DB, vmDetails model.VM) *Orchastrator {
 	return &Orchastrator{
 		Storage: db,
-		Qemu:    qemu.Manager(*vmDetails),
-		VM:      vmDetails,
+		Qemu:    qemu.Manager(vmDetails),
+		VM:      &vmDetails,
 	}
 }
 
-func (o *Orchastrator) CreateVMHandler() error {
-	imagePath, err := o.Storage.FindImage(o.VM.Image, o.VM.Version)
-	if err != nil {
-		return err
-	}
-	o.VM.VNC, err = o.Storage.AllocateVNCPort()
-	if err != nil {
-		return err
-	}
+func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
+	var err error
+
 	o.VM.ResourceID, err = o.Storage.AllocateResourceID()
 	if err != nil {
 		return err
 	}
-	o.VM.Name = naming.GenerateVMName()
 
-	fmt.Printf("\nVNC FROM ORCA: %d\n", o.VM.VNC)
-	fmt.Printf("\nVMID FROM ORCA: %d\n", o.VM.ResourceID)
-
-	vmResp, err := o.Qemu.CreateVM(o.VM, imagePath)
+	imagePath, err := o.Storage.FindImage(o.VM.Image, o.VM.Version)
 	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to find requested image", err)
 		return err
 	}
+
+	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully fetched the requested image", imagePath)
+
+	o.VM.VNC, err = o.Storage.AllocateVNCPort()
+	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to allocate vnc port", err)
+		return err
+	}
+
+	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully fetched the requested image", strconv.Itoa(o.VM.VNC))
+
+	if o.VM.Name == "auto" {
+		o.VM.Name = naming.GenerateVMName()
+		logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully allocated resource name", o.VM.Name)
+	}
+
+	vmResp, err := o.Qemu.CreateVM(ctx, o.VM, imagePath)
+	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create vm", err)
+		return err
+	}
+	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully crraeted and started vm", vmResp.Name)
 
 	err = o.Storage.InsertVmMeta(vmResp)
 	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert metadata to DB", err)
+		err = o.Qemu.Rollback(o.VM.PID, o.VM.ResourceID)
+
+		if err != nil {
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to rollback", err)
+		} else {
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "successfully rolled back resource state", nil)
+		}
+
 		return err
 	}
-	fmt.Printf("Resp: %v", vmResp)
+
+	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully updated state", vmResp.Name)
+
 	return nil
 }
 
-func (o *Orchastrator) DestroyVMHandler(resourceID string) error {
+func (o *Orchastrator) DestroyVMHandler(ctx context.Context, resourceID string) error {
 	var err error
+	resId, _ := strconv.Atoi(resourceID)
 
 	if o.VM.Status, err = o.Storage.ResourceStatus(resourceID); err != nil {
+		logger.LogError(ctx, resId, "destroy-vm", "failed to fetch resource status", err)
 		return err
 	}
 
 	if o.VM.Status != "stopped" {
-		return fmt.Errorf("Err: Resource is running")
+		err = fmt.Errorf("Err: Resource is running")
+		logger.LogError(ctx, resId, "destroy-vm", "cannot destroy running resource", err)
+		return err
 	}
 
-	if err = o.Qemu.DestroyVM(resourceID); err != nil {
+	if err = o.Qemu.DestroyVM(ctx, resourceID); err != nil {
+		logger.LogError(ctx, resId, "destroy-vm", "failed to destroy vm via qemu", err)
 		return err
 	}
 
 	if err = o.Storage.DeleteResource("metadata", "resource_id", resourceID); err != nil {
+		logger.LogError(ctx, resId, "destroy-vm", "failed to delete resource from database", err)
 		return err
 	}
+
+	logger.LogSuccess(ctx, resId, "destroy-vm", "successfully destroyed resource", resourceID)
 	return nil
 
 }
 
-func (o *Orchastrator) ShutdownVMHandler(resourceID string) error {
+func (o *Orchastrator) ShutdownVMHandler(ctx context.Context, resourceID string) error {
+	resId, _ := strconv.Atoi(resourceID)
 
 	status, err := o.Storage.ResourceStatus(resourceID)
 	if err != nil {
+		logger.LogError(ctx, resId, "stop-vm", "failed to fetch resource status", err)
 		return err
 	}
 
 	if status == "stopped" {
-		return fmt.Errorf("Err: Resource is already in stopped state")
+		err = fmt.Errorf("Err: Resource is already in stopped state")
+		logger.LogError(ctx, resId, "stop-vm", "cannot stop already stopped resource", err)
+		return err
 	}
 
 	pid, err := o.Storage.FetchPid(resourceID)
 	if err != nil {
+		logger.LogError(ctx, resId, "stop-vm", "failed to fetch pid", err)
 		return err
 	}
 	if pid <= 0 {
-		return fmt.Errorf("cannot shutdown: invalid or missing PID (%d) for resource %s", pid, resourceID)
+		err = fmt.Errorf("cannot shutdown: invalid or missing PID (%d) for resource %s", pid, resourceID)
+		logger.LogError(ctx, resId, "stop-vm", "invalid pid", err)
+		return err
 	}
 
-	if err = o.Qemu.ShutdownVM(pid); err != nil {
+	if err = o.Qemu.ShutdownVM(ctx, pid); err != nil {
+		logger.LogError(ctx, resId, "stop-vm", "failed to shutdown vm via qemu", err)
 		return err
 	}
 
 	if err = o.Storage.UpdateResourceStatusAndPid(resourceID, "stopped", 0); err != nil {
-		return fmt.Errorf("resource stopped but failed to update DB state: %w", err)
+		err = fmt.Errorf("resource stopped but failed to update DB state: %w", err)
+		logger.LogError(ctx, resId, "stop-vm", "failed to update database state", err)
+		return err
 	}
 
+	logger.LogSuccess(ctx, resId, "stop-vm", "successfully stopped resource", resourceID)
 	return nil
 }
 
-func (o *Orchastrator) StartVMHandler(resourceId string) error {
+func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) error {
+	resId, _ := strconv.Atoi(resourceId)
+
 	status, err := o.Storage.ResourceStatus(resourceId)
 	if err != nil {
+		logger.LogError(ctx, resId, "start-vm", "failed to fetch resource status", err)
 		return err
 	}
 
 	if status != "stopped" {
-		return fmt.Errorf("Err: Cannot start resource, status is in %s", status)
+		err = fmt.Errorf("Err: Cannot start resource, status is in %s", status)
+		logger.LogError(ctx, resId, "start-vm", "resource is not stopped", err)
+		return err
 	}
 	vmDetails, err := o.Storage.FetchVmdetails(resourceId)
 	if err != nil {
+		logger.LogError(ctx, resId, "start-vm", "failed to fetch vm details", err)
 		return err
 	}
 
-	pid, err := o.Qemu.StartVM(vmDetails)
-
+	pid, err := o.Qemu.StartVM(ctx, vmDetails)
 	if err != nil {
+		logger.LogError(ctx, resId, "start-vm", "failed to start vm via qemu", err)
 		return err
 	}
 
 	if err = o.Storage.UpdateResourceStatusAndPid(resourceId, "running", pid); err != nil {
-		return fmt.Errorf("resource started but failed to update DB state: %w", err)
+		err = fmt.Errorf("resource started but failed to update DB state: %w", err)
+		logger.LogError(ctx, resId, "start-vm", "failed to update database state", err)
+		return err
 	}
 
+	logger.LogSuccess(ctx, resId, "start-vm", "successfully started resource", resourceId)
 	return nil
 }
 
-func (o *Orchastrator) ListResources(resourceId string) error {
+func (o *Orchastrator) ListResources(ctx context.Context, resourceId string) error {
 	var vms []model.VM
 	var err error
 	var show_empty bool
 	if resourceId == "" {
 		vms, err = o.Storage.ListAllResource()
 		if err != nil {
+			logger.LogError(ctx, 0, "list-vm", "failed to list all resources", err)
 			log.Fatalf("Error getting VM list: %v", err)
 		}
 
 	} else {
 		vms, err = o.Storage.ListSingleResource(resourceId)
 		if err != nil {
-			// return fmt.Errorf("Error getting VM list: %v", err)
 			show_empty = true
 		}
-
 	}
 
 	fmt.Println("=================================================================================================================================")

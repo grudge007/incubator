@@ -33,3 +33,23 @@ type User struct {
 	SshKey     []string `yaml:"ssh_authorized_keys"`
 	Password   string
 }
+
+type LogError struct {
+	ResourceId int    `json:"resource_id"`
+	Timestamp  string `json:"timestamp"`
+	Action     string `json:"action"`
+	Status     string `json:"status"`
+	Message    string `json:"message"`
+	TaskId     string `json:"taskId"`
+	Error      error  `json:"error"`
+}
+
+type LogSuccess struct {
+	ResourceId int    `json:"resource_id"`
+	Timestamp  string `json:"timestamp"`
+	Action     string `json:"action"`
+	Status     string `json:"status"`
+	Message    string `json:"message"`
+	TaskId     string `json:"taskId"`
+	Resource   string `json:"resource"`
+}

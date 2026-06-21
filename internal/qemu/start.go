@@ -1,13 +1,14 @@
 package qemu
 
 import (
+	"context"
 	"fmt"
 	"incubator/internal/model"
 	"os/exec"
 	"strconv"
 )
 
-func (q *QEMU) StartVM(vmDetails model.VM) (int, error) {
+func (q *QEMU) StartVM(ctx context.Context, vmDetails model.VM) (int, error) {
 	memory := strconv.Itoa(vmDetails.MemoryMB)
 	cpu := strconv.Itoa(vmDetails.CPUs)
 	driveArg := genDriveArg(vmDetails.BootDisk)

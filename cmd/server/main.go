@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"incubator/internal/logger"
 	"incubator/internal/model"
 	"incubator/internal/orchastrator"
 	"incubator/internal/storage"
@@ -12,6 +14,7 @@ import (
 )
 
 const version = "beta-v-02"
+const logFile = "/var/log/incubator/app_logs.json"
 
 var createVMOpts model.VM
 var db *storage.DB
@@ -38,7 +41,19 @@ func main() {
 	if db == nil {
 		log.Fatalf("Error Connecting to  DB")
 	}
+
 	defer db.Cli.Close()
+
+	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatalf("Failed to open file: %v", err)
+	}
+
+	defer file.Close()
+
+	log.SetOutput(file)
+	log.SetFlags(0)
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -68,12 +83,16 @@ var createVMCmd = &cobra.Command{
 		if len(createVMOpts.Name) < 3 {
 			return fmt.Errorf("Name must have atleats 4 character")
 		}
-		fmt.Printf("%v\n", createVMOpts)
-		o := orchastrator.VMManager(db, &createVMOpts)
-		err := o.CreateVMHandler()
+
+		taskId := logger.GenerateTaskId()
+		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
+
+		o := orchastrator.VMManager(db, createVMOpts)
+		err := o.CreateVMHandler(ctx)
 		if err != nil {
 			return err
 		}
+
 		fmt.Println("VM created successfully!")
 		return nil
 	},
@@ -84,10 +103,13 @@ var destroyCmd = &cobra.Command{
 	Short: "Destroy Resource",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		o := orchastrator.VMManager(db, &createVMOpts)
+		taskId := logger.GenerateTaskId()
+		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
+
+		o := orchastrator.VMManager(db, createVMOpts)
 
 		resourceId := args[0]
-		err := o.DestroyVMHandler(resourceId)
+		err := o.DestroyVMHandler(ctx, resourceId)
 		if err != nil {
 			return fmt.Errorf("qemu failed to destroy resource: %w\n", err)
 		}
@@ -101,9 +123,12 @@ var shutdownCmd = &cobra.Command{
 	Short: "Poweroff Resource",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		o := orchastrator.VMManager(db, &createVMOpts)
+		taskId := logger.GenerateTaskId()
+		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
+
+		o := orchastrator.VMManager(db, createVMOpts)
 		resourceId := args[0]
-		err := o.ShutdownVMHandler(resourceId)
+		err := o.ShutdownVMHandler(ctx, resourceId)
 		if err != nil {
 			return fmt.Errorf("qemu failed to stop vm: %w", err)
 		}
@@ -118,9 +143,12 @@ var startCmd = &cobra.Command{
 	Short: "Start Resource",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		o := orchastrator.VMManager(db, &createVMOpts)
+		taskId := logger.GenerateTaskId()
+		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
+
+		o := orchastrator.VMManager(db, createVMOpts)
 		resourceId := args[0]
-		err := o.StartVMHandler(resourceId)
+		err := o.StartVMHandler(ctx, resourceId)
 		if err != nil {
 			return fmt.Errorf("qemu failed to start resource: %w\n", err)
 		}
@@ -135,12 +163,15 @@ var listCmd = &cobra.Command{
 	Args:         cobra.MaximumNArgs(1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		o := orchastrator.VMManager(db, &createVMOpts)
+		taskId := logger.GenerateTaskId()
+		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
+
+		o := orchastrator.VMManager(db, createVMOpts)
 		var resourceId string
 		if len(args) > 0 {
 			resourceId = args[0]
 		}
-		err := o.ListResources(resourceId)
+		err := o.ListResources(ctx, resourceId)
 		if err != nil {
 			return fmt.Errorf("qemu failed to list resources: %w", err)
 		}
