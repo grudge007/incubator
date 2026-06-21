@@ -188,6 +188,46 @@ func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) er
 	return nil
 }
 
+func (o *Orchastrator) VmStatusHandler(ctx context.Context, resourceId string) error {
+	var status string
+
+	pid, err := o.Storage.FetchPid(resourceId)
+	resId, _ := strconv.Atoi(resourceId)
+	if err != nil {
+		logger.LogError(ctx, resId, "vm-status", "failed to fetch pid", err)
+		return err
+	}
+	status = "running"
+
+	running := o.Qemu.IsProcessRunning(pid)
+	// if pid is inactive and non-zero, it means vm is dead but db is not updated
+
+	if !running {
+		status = "stopped"
+		pid = 0
+
+		err = o.Storage.UpdateResourceStatusAndPid(resourceId, "stopped", pid)
+		if err != nil {
+			logger.LogError(ctx, resId, "vm-status", "failed to update vm state", err)
+			return err
+		}
+		logger.LogSuccess(ctx, resId, "vm-status", "successfully updated vm state", resourceId)
+
+	}
+
+	fmt.Println("========================================")
+	fmt.Println("VM STATUS")
+	fmt.Println("========================================")
+
+	fmt.Printf("%-15s: %d\n", "Resource ID", resId)
+	fmt.Printf("%-15s: %s\n", "Status", status)
+	fmt.Printf("%-15s: %d\n", "PID", pid)
+
+	fmt.Println("========================================")
+	logger.LogSuccess(ctx, resId, "vm-status", "successfully listed vm status", resourceId)
+	return nil
+}
+
 func (o *Orchastrator) ListResources(ctx context.Context, resourceId string) error {
 	var vms []model.VM
 	var err error

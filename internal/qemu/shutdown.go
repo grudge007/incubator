@@ -24,7 +24,7 @@ func (q *QEMU) ShutdownVM(ctx context.Context, pid int) error {
 	}
 
 	for range 5 {
-		if !isProcessRunning(proc) {
+		if !q.IsProcessRunning(pid) {
 			fmt.Println("Succesfully Stopped Resource")
 			return nil
 		}
@@ -38,11 +38,15 @@ func (q *QEMU) ShutdownVM(ctx context.Context, pid int) error {
 	return nil
 }
 
-func isProcessRunning(proc *os.Process) bool {
-	err := proc.Signal(syscall.Signal(0))
+func (q *QEMU) IsProcessRunning(pid int) bool {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+
+	err = proc.Signal(syscall.Signal(0))
 	if err == nil {
 		return true
 	}
 	return false
-
 }
