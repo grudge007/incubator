@@ -17,14 +17,11 @@ type VM struct {
 	DiskType      string `json:"disk_type"`
 }
 
-type VmListing struct {
-	PID    int
-	Name   string
-	Image  string
-	Status string
-	UpTime string
+type Interface struct {
+	Name      string
+	NetworkID int
+	Model     string
 }
-
 type User struct {
 	Name       string   `yaml:"name"`
 	Sudo       string   `yaml:"sudo"`

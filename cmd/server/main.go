@@ -18,22 +18,37 @@ const logFile = "/var/log/incubator/app_logs.json"
 
 var createVMOpts model.VM
 var db *storage.DB
+var ifaces []string
+var bridgeName string
+var bridgeType string
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(createVMCmd)
+	rootCmd.AddCommand(createCmd)
 	rootCmd.AddCommand(destroyCmd)
 	rootCmd.AddCommand(shutdownCmd)
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(statusCmd)
 
-	createVMCmd.Flags().StringVar(&createVMOpts.Name, "name", "auto", "VM name")
-	createVMCmd.Flags().IntVar(&createVMOpts.CPUs, "cpu", 2, "Number of vCPUs")
-	createVMCmd.Flags().IntVarP(&createVMOpts.MemoryMB, "memory", "m", 1024, "Memory size (MB)")
-	createVMCmd.Flags().IntVar(&createVMOpts.DiskSize, "disk", 10, "Disk size (GB)")
-	createVMCmd.Flags().StringVar(&createVMOpts.Image, "image", "ubuntu", "VM image/template")
-	createVMCmd.Flags().StringVar(&createVMOpts.Version, "version", "jammy", "os version")
+	createCmd.AddCommand(bridgeCmd)
+	createCmd.AddCommand(vmCreateCmd)
+
+	destroyCmd.AddCommand(vmDestroyCmd)
+
+	listCmd.AddCommand(listVmCmd)
+
+	vmCreateCmd.Flags().StringVar(&createVMOpts.Name, "name", "auto", "VM name")
+	vmCreateCmd.Flags().IntVar(&createVMOpts.CPUs, "cpu", 2, "Number of vCPUs")
+	vmCreateCmd.Flags().IntVarP(&createVMOpts.MemoryMB, "memory", "m", 1024, "Memory size (MB)")
+	vmCreateCmd.Flags().IntVar(&createVMOpts.DiskSize, "disk", 10, "Disk size (GB)")
+	vmCreateCmd.Flags().StringVar(&createVMOpts.Image, "image", "ubuntu", "VM image/template")
+	vmCreateCmd.Flags().StringVar(&createVMOpts.Version, "version", "jammy", "os version")
+	vmCreateCmd.Flags().StringSliceVar(&ifaces, "iface", []string{"default"}, "Network Bridges")
+
+	bridgeCmd.Flags().StringVar(&bridgeName, "name", "", "Bridge Name")
+	bridgeCmd.Flags().StringVar(&bridgeType, "type", "linux-bridge", "Bridge Type")
+	bridgeCmd.MarkFlagRequired("name")
 
 }
 
@@ -64,7 +79,7 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "incubator",
-	Short: "a tiny openstack",
+	Short: "Incubator: A Tiny Openstack",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("Welcome to incubator! Use --help to see available commands.")
 	},
@@ -77,9 +92,27 @@ var versionCmd = &cobra.Command{
 	},
 }
 
-var createVMCmd = &cobra.Command{
+var createCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a Resource",
+	Run: func(cmd *cobra.Command, args []string) {
+	},
+}
+
+var bridgeCmd = &cobra.Command{
+	Use:   "bridge",
+	Short: "create a bridge",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+
+		return nil
+	},
+}
+
+var vmCreateCmd = &cobra.Command{
+	Use:   "vm",
+	Short: "create a vm",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(createVMOpts.Name) < 3 {
 			return fmt.Errorf("Name must have atleats 4 character")
@@ -89,6 +122,7 @@ var createVMCmd = &cobra.Command{
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
 		o := orchastrator.VMManager(db, createVMOpts)
+		o.Iface = ifaces
 		err := o.CreateVMHandler(ctx)
 		if err != nil {
 			return err
@@ -102,6 +136,15 @@ var createVMCmd = &cobra.Command{
 var destroyCmd = &cobra.Command{
 	Use:   "destroy",
 	Short: "Destroy Resource",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+
+	},
+}
+
+var vmDestroyCmd = &cobra.Command{
+	Use:   "vm",
+	Short: "destroy a vm",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskId := logger.GenerateTaskId()
@@ -160,6 +203,16 @@ var startCmd = &cobra.Command{
 
 var listCmd = &cobra.Command{
 	Use:          "list",
+	Short:        "List Resources",
+	Args:         cobra.MaximumNArgs(1),
+	SilenceUsage: true,
+	Run: func(cmd *cobra.Command, args []string) {
+
+	},
+}
+
+var listVmCmd = &cobra.Command{
+	Use:          "vm",
 	Short:        "List Resources",
 	Args:         cobra.MaximumNArgs(1),
 	SilenceUsage: true,

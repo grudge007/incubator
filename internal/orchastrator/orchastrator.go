@@ -6,6 +6,7 @@ import (
 	"incubator/internal/logger"
 	"incubator/internal/model"
 	"incubator/internal/naming"
+	"incubator/internal/network"
 	"incubator/internal/qemu"
 	"incubator/internal/storage"
 	"log"
@@ -16,6 +17,8 @@ type Orchastrator struct {
 	Qemu    *qemu.QEMU
 	Storage *storage.DB
 	VM      *model.VM
+	Network *network.Network
+	Iface   []string
 }
 
 func VMManager(db *storage.DB, vmDetails model.VM) *Orchastrator {
@@ -23,6 +26,7 @@ func VMManager(db *storage.DB, vmDetails model.VM) *Orchastrator {
 		Storage: db,
 		Qemu:    qemu.Manager(vmDetails),
 		VM:      &vmDetails,
+		Network: network.InitNetwork(),
 	}
 }
 
@@ -55,28 +59,96 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully allocated resource name", o.VM.Name)
 	}
 
-	vmResp, err := o.Qemu.CreateVM(ctx, o.VM, imagePath)
+	vmResp, qemuArgs, err := o.Qemu.PrepareVMCreation(ctx, o.VM, imagePath)
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create vm", err)
 		return err
 	}
+	fmt.Printf("Resp : %v", vmResp)
 	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully crraeted and started vm", vmResp.Name)
 
-	err = o.Storage.InsertVmMeta(vmResp)
+	_, err = o.Storage.InsertInitialVmMeta(vmResp)
 	if err != nil {
-		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert metadata to DB", err)
-		err = o.Qemu.Rollback(o.VM.PID, o.VM.ResourceID)
-
-		if err != nil {
-			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to rollback", err)
-		} else {
-			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "successfully rolled back resource state", nil)
-		}
-
 		return err
 	}
 
-	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully updated state", vmResp.Name)
+	// fmt.Println("meta id: ", metaId)
+	fmt.Println("", len(o.Iface))
+
+	var ifaces []string
+	for i := 0; i < len(o.Iface); i++ {
+		ifaceName := o.Network.GenerateTapDevName(i, vmResp.ResourceID)
+		ifaces = append(ifaces, ifaceName)
+		var bridge string
+
+		if o.Iface[i] == "default" {
+			bridge = o.Network.DefaultBridge
+		} else {
+			bridge = o.Iface[i]
+		}
+		ok, link, err := o.Network.CheckBridgeExist(bridge)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return err
+		}
+
+		ok, err = o.Network.CheckTapBridgePortExist(ifaceName)
+		if err != nil {
+			return err
+		}
+
+		if !ok {
+			o.Network.CreateTapBridgePort(link, ifaceName)
+		}
+		bridgeId, err := o.Storage.FetchBridgeId(o.Iface[i])
+		fmt.Println("bridge_id", bridgeId)
+
+		if err != nil {
+			return err
+		}
+
+		err = o.Storage.InserNetworkIface(vmResp.ResourceID, bridgeId, ifaceName)
+		if err != nil {
+			return err
+		}
+
+	}
+
+	ifaces, err = o.Storage.FetchInterfaces(vmResp.ResourceID)
+	if err != nil {
+		return err
+	}
+
+	qemuArgs = o.Qemu.SetupVMArgs(qemuArgs, ifaces)
+	fmt.Println(qemuArgs)
+	pid, err := o.Qemu.StartVM(ctx, qemuArgs)
+	if err != nil {
+		return err
+	}
+
+	err = o.Storage.UpdateResourceStatusAndPid(strconv.Itoa(vmResp.ResourceID), "running", pid)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("pid: %d\n qemuArgs: %v\n", pid, qemuArgs)
+
+	// if err != nil {
+	// 	logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert metadata to DB", err)
+
+	// 	err = o.Qemu.Rollback(o.VM.PID, o.VM.ResourceID)
+	// 	if err != nil {
+	// 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to rollback", err)
+	// 	} else {
+	// 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "successfully rolled back resource state", nil)
+	// 	}
+
+	// 	return err
+	// }
+
+	// logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully updated state", vmResp.Name)
 
 	return nil
 }
@@ -99,6 +171,17 @@ func (o *Orchastrator) DestroyVMHandler(ctx context.Context, resourceID string) 
 	if err = o.Qemu.DestroyVM(ctx, resourceID); err != nil {
 		logger.LogError(ctx, resId, "destroy-vm", "failed to destroy vm via qemu", err)
 		return err
+	}
+	ifaces, err := o.Storage.FetchInterfaces(resId)
+	if err != nil {
+		return err
+	}
+
+	for _, iface := range ifaces {
+		err = o.Network.DeleteTapFromBridgeAndSystem(iface)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err = o.Storage.DeleteResource("metadata", "resource_id", resourceID); err != nil {
@@ -166,13 +249,13 @@ func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) er
 		logger.LogError(ctx, resId, "start-vm", "resource is not stopped", err)
 		return err
 	}
-	vmDetails, err := o.Storage.FetchVmdetails(resourceId)
+	// _, err := o.Storage.FetchVmdetails(resourceId)
 	if err != nil {
 		logger.LogError(ctx, resId, "start-vm", "failed to fetch vm details", err)
 		return err
 	}
 
-	pid, err := o.Qemu.StartVM(ctx, vmDetails)
+	pid, err := o.Qemu.StartVM(ctx, o.Iface)
 	if err != nil {
 		logger.LogError(ctx, resId, "start-vm", "failed to start vm via qemu", err)
 		return err

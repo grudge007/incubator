@@ -14,7 +14,7 @@ type DB struct {
 }
 
 func InitDB() *DB {
-	db, err := sql.Open("sqlite3", "/root/incubator.db")
+	db, err := sql.Open("sqlite3", "file:/root/incubator.db?_foreign_keys=on")
 	if err != nil {
 		log.Fatal("Error: DB Connection Failed")
 	}
@@ -24,6 +24,43 @@ func InitDB() *DB {
 	return &DB{
 		Cli: db,
 	}
+}
+
+func (d *DB) InsertInitialVmMeta(vmResp *model.VM) (int64, error) {
+	// 1. Prepare the complete SQL query statement
+	query := `
+		INSERT INTO metadata (
+			resource_name,resource_id, disk_path, cloud_init, os_image, 
+			cpu, memory, disk_size, disk_type, disk_index, 
+			vnc_port, created_at, updated_at
+		) VALUES (?, ?,?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+	`
+
+	// 2. Execute the query and pass the values from the vmResp struct mapping to the placeholders
+	result, err := d.Cli.Exec(
+		query,
+		vmResp.Name,          // resource_name
+		vmResp.ResourceID,    // resource_id
+		vmResp.BootDisk,      // disk_path
+		vmResp.CloudInitFile, // cloud_init_path
+		vmResp.Image,         // os_image
+		vmResp.CPUs,          // cpu
+		vmResp.MemoryMB,      // memory
+		vmResp.DiskSize,      // disk_size
+		vmResp.DiskType,      // disk_type (Added since it's NOT NULL in your schema)
+		vmResp.DiskIndex,     // disk_index
+		vmResp.VNC,           // vnc_port
+	)
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert VM metadata: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get inserted row id: %w", err)
+	}
+
+	return id, nil
 }
 
 func (d *DB) InsertVmMeta(vmResp *model.VM) error {
@@ -240,4 +277,59 @@ func (d *DB) ListSingleResource(resourceId string) ([]model.VM, error) {
 		return vms, fmt.Errorf("failed to scan row: %w", err)
 	}
 	return vms, nil
+}
+
+func (d *DB) InserNetworkIface(resourceId, bridgeId int, iface string) error {
+	query := `
+		INSERT INTO networks (
+		resource_id,
+		bridge_id,
+		tap_name
+		)
+		VALUES (?, ?, ?)
+	`
+	_, err := d.Cli.Exec(query,
+		resourceId,
+		bridgeId,
+		iface,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert network interface: %w", err)
+	}
+	return nil
+}
+
+func (d *DB) FetchInterfaces(resourceId int) ([]string, error) {
+	query := "SELECT tap_name  FROM networks WHERE resource_id = ?"
+	results, err := d.Cli.Query(query, resourceId)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+
+	defer results.Close()
+
+	var ifaces []string
+	for results.Next() {
+		var id string
+		err := results.Scan(&id)
+		if err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+		ifaces = append(ifaces, id)
+	}
+	return ifaces, nil
+
+}
+
+func (d *DB) FetchBridgeId(bridgeName string) (int, error) {
+	var bridgeId int
+	query := "SELECT id FROM network_bridges WHERE name = ?"
+
+	err := d.Cli.QueryRow(query, bridgeName).Scan(&bridgeId)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch bridge id: %w", err)
+	}
+
+	return bridgeId, nil
+
 }
