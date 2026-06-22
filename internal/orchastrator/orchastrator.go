@@ -32,6 +32,7 @@ func VMManager(db *storage.DB, vmDetails model.VM) *Orchastrator {
 
 func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	var err error
+	var pid int
 
 	o.VM.ResourceID, err = o.Storage.AllocateResourceID()
 	if err != nil {
@@ -88,14 +89,21 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		}
 		ok, link, err := o.Network.CheckBridgeExist(bridge)
 		if err != nil {
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to check bridge exist", err)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 			return err
 		}
 		if !ok {
+			err = fmt.Errorf("bridge %s does not exist", bridge)
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "bridge not found", err)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 			return err
 		}
 
 		ok, err = o.Network.CheckTapBridgePortExist(ifaceName)
 		if err != nil {
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to check tap port exist", err)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 			return err
 		}
 
@@ -106,11 +114,15 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		fmt.Println("bridge_id", bridgeId)
 
 		if err != nil {
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to fetch bridge id", err)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 			return err
 		}
 
 		err = o.Storage.InserNetworkIface(vmResp.ResourceID, bridgeId, ifaceName)
 		if err != nil {
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert network interface into db", err)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 			return err
 		}
 
@@ -118,28 +130,37 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 
 	ifaces, err = o.Storage.FetchInterfaces(vmResp.ResourceID)
 	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to fetch interfaces", err)
+		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 		return err
 	}
 	qemuArgs := o.Qemu.PrepareQemuArgs(*vmResp)
 	fmt.Printf("\nQEMU ARGS: %v\n", qemuArgs)
 	ifaces, err = o.Storage.FetchInterfaces(vmResp.ResourceID)
 	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to fetch interfaces before start", err)
+		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 		return err
 	}
 
 	qemuArgs = o.Qemu.SetupVMIfaceArgs(qemuArgs, ifaces)
 	fmt.Println(qemuArgs)
-	pid, err := o.Qemu.StartVM(ctx, qemuArgs)
+	pid, err = o.Qemu.StartVM(ctx, qemuArgs)
 	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to start vm via qemu", err)
+		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 		return err
 	}
 
 	err = o.Storage.UpdateResourceStatusAndPid(strconv.Itoa(vmResp.ResourceID), "running", pid)
 	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to update status to running", err)
+		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 		return err
 	}
 
 	fmt.Printf("pid: %d\n qemuArgs: %v\n", pid, qemuArgs)
+	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "successfully created and started vm", vmResp.Name)
 
 	return nil
 }
@@ -324,6 +345,7 @@ func (o *Orchastrator) ListResources(ctx context.Context, resourceId string) err
 	if resourceId == "" {
 		vms, err = o.Storage.ListAllResource()
 		if err != nil {
+			fmt.Println("hiii")
 			logger.LogError(ctx, 0, "list-vm", "failed to list all resources", err)
 			log.Fatalf("Error getting VM list: %v", err)
 		}
@@ -364,4 +386,20 @@ func (o *Orchastrator) ListResources(ctx context.Context, resourceId string) err
 	}
 	fmt.Println("=================================================================================================================================")
 	return nil
+}
+
+func (o *Orchastrator) RollbackHandler(ctx context.Context, pid, resourceId int, ifaces []string) {
+	o.Qemu.Rollback(pid, resourceId)
+	for i := 0; i < len(ifaces); i++ {
+		err := o.Network.DeleteTapFromBridgeAndSystem(ifaces[i])
+		if err != nil {
+			logger.LogError(ctx, resourceId, "create-vm", "failed to delete tap interface during rollback", err)
+		}
+	}
+	err := o.Storage.DeleteResource("metadata", "resource_id", strconv.Itoa(resourceId))
+	if err != nil {
+		logger.LogError(ctx, resourceId, "create-vm", "failed to delete from db during rollback", err)
+		return
+	}
+	logger.LogError(ctx, resourceId, "create-vm", "successfully rolled back resource", nil)
 }

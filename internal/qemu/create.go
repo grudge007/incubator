@@ -63,14 +63,18 @@ func (q *QEMU) SetupVMIfaceArgs(qemuArgs, ifaces []string) []string {
 }
 
 func (q *QEMU) Rollback(pid, resourceId int) error {
-	proc, err := os.FindProcess(pid)
+	if pid > 0 {
+		proc, err := os.FindProcess(pid)
+		if err != nil {
+			// log here, no need to stop...
+		}
+		proc.Signal(syscall.SIGKILL)
+
+	}
+	err := os.RemoveAll(filepath.Join(q.DiskStore, strconv.Itoa(resourceId)))
 	if err != nil {
 		return err
 	}
-	proc.Signal(syscall.SIGKILL)
-	err = os.RemoveAll(filepath.Join(q.DiskStore, strconv.Itoa(resourceId)))
-	if err != nil {
-		return err
-	}
+
 	return nil
 }

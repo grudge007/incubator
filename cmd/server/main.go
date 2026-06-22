@@ -207,9 +207,6 @@ var listCmd = &cobra.Command{
 	Short:        "List Resources",
 	Args:         cobra.MaximumNArgs(1),
 	SilenceUsage: true,
-	Run: func(cmd *cobra.Command, args []string) {
-
-	},
 }
 
 var listVmCmd = &cobra.Command{
