@@ -143,9 +143,10 @@ var destroyCmd = &cobra.Command{
 }
 
 var vmDestroyCmd = &cobra.Command{
-	Use:   "vm",
-	Short: "destroy a vm",
-	Args:  cobra.ExactArgs(1),
+	Use:          "vm",
+	Short:        "destroy a vm",
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskId := logger.GenerateTaskId()
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)

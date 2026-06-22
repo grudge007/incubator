@@ -59,7 +59,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully allocated resource name", o.VM.Name)
 	}
 
-	vmResp, qemuArgs, err := o.Qemu.PrepareVMCreation(ctx, o.VM, imagePath)
+	vmResp, err := o.Qemu.PrepareVMCreation(ctx, o.VM, imagePath)
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create vm", err)
 		return err
@@ -120,8 +120,14 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	qemuArgs := o.Qemu.PrepareQemuArgs(*vmResp)
+	fmt.Printf("\nQEMU ARGS: %v\n", qemuArgs)
+	ifaces, err = o.Storage.FetchInterfaces(vmResp.ResourceID)
+	if err != nil {
+		return err
+	}
 
-	qemuArgs = o.Qemu.SetupVMArgs(qemuArgs, ifaces)
+	qemuArgs = o.Qemu.SetupVMIfaceArgs(qemuArgs, ifaces)
 	fmt.Println(qemuArgs)
 	pid, err := o.Qemu.StartVM(ctx, qemuArgs)
 	if err != nil {
@@ -134,21 +140,6 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	}
 
 	fmt.Printf("pid: %d\n qemuArgs: %v\n", pid, qemuArgs)
-
-	// if err != nil {
-	// 	logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert metadata to DB", err)
-
-	// 	err = o.Qemu.Rollback(o.VM.PID, o.VM.ResourceID)
-	// 	if err != nil {
-	// 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to rollback", err)
-	// 	} else {
-	// 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "successfully rolled back resource state", nil)
-	// 	}
-
-	// 	return err
-	// }
-
-	// logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully updated state", vmResp.Name)
 
 	return nil
 }
@@ -249,23 +240,38 @@ func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) er
 		logger.LogError(ctx, resId, "start-vm", "resource is not stopped", err)
 		return err
 	}
-	// _, err := o.Storage.FetchVmdetails(resourceId)
+	vmDetails, err := o.Storage.FetchVmdetails(resourceId)
 	if err != nil {
 		logger.LogError(ctx, resId, "start-vm", "failed to fetch vm details", err)
 		return err
 	}
+	qemuArgs := o.Qemu.PrepareQemuArgs(vmDetails)
+	fmt.Printf("\nQEMU ARGS: %v\n", qemuArgs)
+	ifaces, err := o.Storage.FetchInterfaces(vmDetails.ResourceID)
+	if err != nil {
+		return err
+	}
 
-	pid, err := o.Qemu.StartVM(ctx, o.Iface)
+	qemuArgs = o.Qemu.SetupVMIfaceArgs(qemuArgs, ifaces)
+	fmt.Printf("\nQMU ARGS 2: %v\n", qemuArgs)
+
+	pid, err := o.Qemu.StartVM(ctx, qemuArgs)
 	if err != nil {
 		logger.LogError(ctx, resId, "start-vm", "failed to start vm via qemu", err)
 		return err
 	}
-
-	if err = o.Storage.UpdateResourceStatusAndPid(resourceId, "running", pid); err != nil {
-		err = fmt.Errorf("resource started but failed to update DB state: %w", err)
-		logger.LogError(ctx, resId, "start-vm", "failed to update database state", err)
+	fmt.Printf("Vm Details: %v \n", vmDetails)
+	fmt.Printf("Passed ID : %d\n, From DB: %d\n", resId, vmDetails.ResourceID)
+	err = o.Storage.UpdateResourceStatusAndPid(strconv.Itoa(resId), "running", pid)
+	if err != nil {
 		return err
 	}
+
+	// if err = o.Storage.UpdateResourceStatusAndPid(resourceId, "running", pid); err != nil {
+	// 	err = fmt.Errorf("resource started but failed to update DB state: %w", err)
+	// 	logger.LogError(ctx, resId, "start-vm", "failed to update database state", err)
+	// 	return err
+	// }
 
 	logger.LogSuccess(ctx, resId, "start-vm", "successfully started resource", resourceId)
 	return nil

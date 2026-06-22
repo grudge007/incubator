@@ -194,7 +194,7 @@ func (d *DB) UpdateResourceStatusAndPid(resourceId, status string, pid int) erro
 }
 
 func (d *DB) FetchVmdetails(resourceId string) (model.VM, error) {
-	query := "SELECT memory, resource_name, cpu, disk_path, cloud_init, vnc_port FROM metadata WHERE resource_id = ?"
+	query := "SELECT memory, resource_name, cpu, disk_path, cloud_init, vnc_port, resource_id FROM metadata WHERE resource_id = ?"
 	var vmDetails model.VM
 
 	err := d.Cli.QueryRow(query, resourceId).Scan(
@@ -204,10 +204,12 @@ func (d *DB) FetchVmdetails(resourceId string) (model.VM, error) {
 		&vmDetails.BootDisk,
 		&vmDetails.CloudInitFile,
 		&vmDetails.VNC,
+		&vmDetails.ResourceID,
 	)
 	if err != nil {
 		return vmDetails, fmt.Errorf("failed to fetch details")
 	}
+	// vmDetails.ResourceID == resourceId
 	return vmDetails, nil
 }
 
