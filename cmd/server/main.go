@@ -19,6 +19,7 @@ const logFile = "/var/log/incubator/app_logs.json"
 var createVMOpts model.VM
 var db *storage.DB
 var ifaces []string
+var dataDisk []int
 var bridgeName string
 var bridgeType string
 
@@ -44,7 +45,8 @@ func init() {
 	vmCreateCmd.Flags().IntVar(&createVMOpts.DiskSize, "disk", 10, "Disk size (GB)")
 	vmCreateCmd.Flags().StringVar(&createVMOpts.Image, "image", "ubuntu", "VM image/template")
 	vmCreateCmd.Flags().StringVar(&createVMOpts.Version, "version", "jammy", "os version")
-	vmCreateCmd.Flags().StringSliceVar(&ifaces, "iface", []string{"default"}, "Network Bridges")
+	vmCreateCmd.Flags().StringSliceVar(&ifaces, "iface", []string{"default"}, "Add Network Bridges")
+	vmCreateCmd.Flags().IntSliceVar(&dataDisk, "data-disk", []int{}, "Add Data Disks")
 
 	bridgeCmd.Flags().StringVar(&bridgeName, "name", "", "Bridge Name")
 	bridgeCmd.Flags().StringVar(&bridgeType, "type", "linux-bridge", "Bridge Type")
@@ -123,6 +125,7 @@ var vmCreateCmd = &cobra.Command{
 
 		o := orchastrator.VMManager(db, createVMOpts)
 		o.Iface = ifaces
+		o.Disk = dataDisk
 		err := o.CreateVMHandler(ctx)
 		if err != nil {
 			return err

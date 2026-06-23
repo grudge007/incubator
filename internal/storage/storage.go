@@ -335,3 +335,20 @@ func (d *DB) FetchBridgeId(bridgeName string) (int, error) {
 	return bridgeId, nil
 
 }
+
+func (d *DB) InsertDataDisk(resourceId int, diskImage, diskId string, detached bool) error {
+	query := `INSERT INTO data_disks 
+	(resource_id,
+	disk_image,
+	disk_id,
+	detached,
+	boot_index
+	)
+	VALUES (?, ?, ?, ?, ?)`
+
+	_, err := d.Cli.Exec(query, resourceId, diskImage, diskId, detached, 0)
+	if err != nil {
+		return fmt.Errorf("failed to insert data disk details: %w", err)
+	}
+	return nil
+}

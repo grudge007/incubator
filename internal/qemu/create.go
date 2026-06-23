@@ -51,7 +51,7 @@ func (q *QEMU) PrepareVMCreation(ctx context.Context, vmDetails *model.VM, image
 }
 
 func (q *QEMU) SetupVMIfaceArgs(qemuArgs, ifaces []string) []string {
-	for i := 0; i < len(ifaces); i++ {
+	for i := range len(ifaces) {
 		netdevArg := fmt.Sprintf("tap,id=n%d,ifname=%s,script=no,downscript=no", i, ifaces[i])
 		devicArg := fmt.Sprintf("virtio-net-pci,netdev=n%d", i)
 		qemuArgs = append(qemuArgs, "-netdev")

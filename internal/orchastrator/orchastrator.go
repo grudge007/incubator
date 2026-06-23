@@ -19,6 +19,7 @@ type Orchastrator struct {
 	VM      *model.VM
 	Network *network.Network
 	Iface   []string
+	Disk    []int
 }
 
 func VMManager(db *storage.DB, vmDetails model.VM) *Orchastrator {
@@ -33,6 +34,7 @@ func VMManager(db *storage.DB, vmDetails model.VM) *Orchastrator {
 func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	var err error
 	var pid int
+	var ifaces []string
 
 	o.VM.ResourceID, err = o.Storage.AllocateResourceID()
 	if err != nil {
@@ -53,7 +55,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		return err
 	}
 
-	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully fetched the requested image", strconv.Itoa(o.VM.VNC))
+	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "successfully allocated vnc port", strconv.Itoa(o.VM.VNC))
 
 	if o.VM.Name == "auto" {
 		o.VM.Name = naming.GenerateVMName()
@@ -66,18 +68,20 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		return err
 	}
 	fmt.Printf("Resp : %v", vmResp)
-	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully crraeted and started vm", vmResp.Name)
+	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "successfully prepared VM disks", vmResp.Name)
 
 	_, err = o.Storage.InsertInitialVmMeta(vmResp)
 	if err != nil {
+		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert initial VM metadata", err)
+		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 		return err
 	}
 
 	// fmt.Println("meta id: ", metaId)
-	fmt.Println("", len(o.Iface))
+	fmt.Println("\n", len(o.Iface))
+	fmt.Println("o.iface", o.Iface)
 
-	var ifaces []string
-	for i := 0; i < len(o.Iface); i++ {
+	for i := range len(o.Iface) {
 		ifaceName := o.Network.GenerateTapDevName(i, vmResp.ResourceID)
 		ifaces = append(ifaces, ifaceName)
 		var bridge string
@@ -108,9 +112,15 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		}
 
 		if !ok {
-			o.Network.CreateTapBridgePort(link, ifaceName)
+			err = o.Network.CreateTapBridgePort(link, ifaceName)
+			if err != nil {
+				logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create tap bridge port", err)
+				o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+				return err
+			}
 		}
-		bridgeId, err := o.Storage.FetchBridgeId(o.Iface[i])
+		fmt.Printf("\nbridge: %s\n", bridge)
+		bridgeId, err := o.Storage.FetchBridgeId(bridge)
 		fmt.Println("bridge_id", bridgeId)
 
 		if err != nil {
@@ -128,25 +138,39 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 
 	}
 
-	ifaces, err = o.Storage.FetchInterfaces(vmResp.ResourceID)
-	if err != nil {
-		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to fetch interfaces", err)
-		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-		return err
-	}
-	qemuArgs := o.Qemu.PrepareQemuArgs(*vmResp)
-	fmt.Printf("\nQEMU ARGS: %v\n", qemuArgs)
-	ifaces, err = o.Storage.FetchInterfaces(vmResp.ResourceID)
-	if err != nil {
-		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to fetch interfaces before start", err)
-		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-		return err
+	var diskImages []string
+
+	for i := 0; i < len(o.Disk); i++ {
+		diskImage, err := o.Qemu.CreateDataDisk(strconv.Itoa(o.VM.ResourceID), i, o.Disk[i])
+		fmt.Println("i: ", i)
+		if err != nil {
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create data disk", err)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			return err
+		}
+
+		diskId := o.Qemu.DiskIdGen(i)
+
+		err = o.Storage.InsertDataDisk(vmResp.ResourceID, diskImage, diskId, false)
+		if err != nil {
+			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert data disk details into db", err)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			return err
+		}
+		diskImages = append(diskImages, diskImage)
+		fmt.Printf("diskImages: %v", diskImages)
+
 	}
 
+	qemuArgs := o.Qemu.PrepareQemuArgs(*vmResp)
+
 	qemuArgs = o.Qemu.SetupVMIfaceArgs(qemuArgs, ifaces)
-	fmt.Println(qemuArgs)
+
+	qemuArgs = o.Qemu.SetupVmDiskArgs(qemuArgs, diskImages)
+
 	pid, err = o.Qemu.StartVM(ctx, qemuArgs)
 	if err != nil {
+		fmt.Println("\nfuckedup")
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to start vm via qemu", err)
 		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
 		return err
@@ -195,6 +219,9 @@ func (o *Orchastrator) DestroyVMHandler(ctx context.Context, resourceID string) 
 			return err
 		}
 	}
+
+	_ = o.Storage.DeleteResource("networks", "resource_id", resourceID)
+	_ = o.Storage.DeleteResource("data_disks", "resource_id", resourceID)
 
 	if err = o.Storage.DeleteResource("metadata", "resource_id", resourceID); err != nil {
 		logger.LogError(ctx, resId, "destroy-vm", "failed to delete resource from database", err)
@@ -396,6 +423,8 @@ func (o *Orchastrator) RollbackHandler(ctx context.Context, pid, resourceId int,
 			logger.LogError(ctx, resourceId, "create-vm", "failed to delete tap interface during rollback", err)
 		}
 	}
+	_ = o.Storage.DeleteResource("networks", "resource_id", strconv.Itoa(resourceId))
+	_ = o.Storage.DeleteResource("data_disks", "resource_id", strconv.Itoa(resourceId))
 	err := o.Storage.DeleteResource("metadata", "resource_id", strconv.Itoa(resourceId))
 	if err != nil {
 		logger.LogError(ctx, resourceId, "create-vm", "failed to delete from db during rollback", err)

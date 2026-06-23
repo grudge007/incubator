@@ -7,7 +7,7 @@ import (
 )
 
 func createCloudInitIso(cloudInitFile, diskDir string) (string, error) {
-	cloudInitDisk := filepath.Join(diskDir, "seed.img")
+	cloudInitDisk := filepath.Join(diskDir, "cloud-init-seed.img")
 	cmd := exec.Command(
 		"cloud-localds",
 		cloudInitDisk,
