@@ -22,6 +22,9 @@ type Interface struct {
 	NetworkID int
 	Model     string
 }
+
+type Bridge struct{}
+
 type User struct {
 	Name       string   `yaml:"name"`
 	Sudo       string   `yaml:"sudo"`

@@ -37,6 +37,10 @@ func init() {
 
 	destroyCmd.AddCommand(vmDestroyCmd)
 
+	startCmd.AddCommand(startVMCmd)
+
+	shutdownCmd.AddCommand(shutdownVMCmd)
+
 	listCmd.AddCommand(listVmCmd)
 
 	vmCreateCmd.Flags().StringVar(&createVMOpts.Name, "name", "auto", "VM name")
@@ -170,6 +174,12 @@ var shutdownCmd = &cobra.Command{
 	Use:   "stop",
 	Short: "Poweroff Resource",
 	Args:  cobra.ExactArgs(1),
+}
+
+var shutdownVMCmd = &cobra.Command{
+	Use:   "vm",
+	Short: "Poweroff Resource",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskId := logger.GenerateTaskId()
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
@@ -188,6 +198,12 @@ var shutdownCmd = &cobra.Command{
 
 var startCmd = &cobra.Command{
 	Use:   "start",
+	Short: "Start Resource",
+	Args:  cobra.ExactArgs(1),
+}
+
+var startVMCmd = &cobra.Command{
+	Use:   "vm",
 	Short: "Start Resource",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

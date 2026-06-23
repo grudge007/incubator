@@ -300,8 +300,13 @@ func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) er
 		return err
 	}
 
+	diskImages, err := o.Storage.FetchDataDisks(resourceId)
+	if err != nil {
+		return err
+	}
+
 	qemuArgs = o.Qemu.SetupVMIfaceArgs(qemuArgs, ifaces)
-	fmt.Printf("\nQMU ARGS 2: %v\n", qemuArgs)
+	qemuArgs = o.Qemu.SetupVmDiskArgs(qemuArgs, diskImages)
 
 	pid, err := o.Qemu.StartVM(ctx, qemuArgs)
 	if err != nil {
@@ -431,4 +436,8 @@ func (o *Orchastrator) RollbackHandler(ctx context.Context, pid, resourceId int,
 		return
 	}
 	logger.LogError(ctx, resourceId, "create-vm", "successfully rolled back resource", nil)
+}
+
+func (o *Orchastrator) CreateBridgeHandler() {
+
 }

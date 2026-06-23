@@ -319,6 +319,10 @@ func (d *DB) FetchInterfaces(resourceId int) ([]string, error) {
 		}
 		ifaces = append(ifaces, id)
 	}
+	if err := results.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating ifaces for %d: %w", resourceId, err)
+	}
+
 	return ifaces, nil
 
 }
@@ -351,4 +355,32 @@ func (d *DB) InsertDataDisk(resourceId int, diskImage, diskId string, detached b
 		return fmt.Errorf("failed to insert data disk details: %w", err)
 	}
 	return nil
+}
+
+func (d *DB) FetchDataDisks(resourceId string) ([]string, error) {
+	query := "SELECT disk_image FROM data_disks WHERE resource_id = ?"
+
+	rows, err := d.Cli.Query(query, resourceId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch data disk for %s: %w", resourceId, err)
+	}
+
+	var diskImages []string
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var diskImage string
+		err := rows.Scan(&diskImage)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch data disk for %s: %w", resourceId, err)
+		}
+		diskImages = append(diskImages, diskImage)
+
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating data disks for %s: %w", resourceId, err)
+	}
+
+	return diskImages, nil
 }

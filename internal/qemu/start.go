@@ -39,6 +39,7 @@ func (q *QEMU) PrepareQemuArgs(vmDetails model.VM) []string {
 		"-drive", driveArg,
 		"-drive", cloudInitArg,
 		"-display", "none",
+		"-machine", "q35",
 		// "-serial", "stdio",
 		"-vnc", vncArg,
 	}
