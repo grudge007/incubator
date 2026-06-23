@@ -132,3 +132,19 @@ func (n *Network) DeleteTapFromBridgeAndSystem(tapName string) error {
 
 	return nil
 }
+
+func (n *Network) DeleteBridgeByName(name string) error {
+	// Create a bridge object with the specified name
+	bridge := &netlink.Bridge{
+		LinkAttrs: netlink.LinkAttrs{
+			Name: name,
+		},
+	}
+
+	// Attempt to delete the link directly
+	if err := netlink.LinkDel(bridge); err != nil {
+		return fmt.Errorf("failed to delete bridge %s: %w", name, err)
+	}
+
+	return nil
+}

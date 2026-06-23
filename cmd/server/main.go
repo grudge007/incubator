@@ -32,10 +32,11 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(statusCmd)
 
-	createCmd.AddCommand(bridgeCmd)
 	createCmd.AddCommand(vmCreateCmd)
+	createCmd.AddCommand(createBridgeCmd)
 
 	destroyCmd.AddCommand(vmDestroyCmd)
+	destroyCmd.AddCommand(destroyBridgeCmd)
 
 	startCmd.AddCommand(startVMCmd)
 
@@ -52,9 +53,12 @@ func init() {
 	vmCreateCmd.Flags().StringSliceVar(&ifaces, "iface", []string{"default"}, "Add Network Bridges")
 	vmCreateCmd.Flags().IntSliceVar(&dataDisk, "data-disk", []int{}, "Add Data Disks")
 
-	bridgeCmd.Flags().StringVar(&bridgeName, "name", "", "Bridge Name")
-	bridgeCmd.Flags().StringVar(&bridgeType, "type", "linux-bridge", "Bridge Type")
-	bridgeCmd.MarkFlagRequired("name")
+	createBridgeCmd.Flags().StringVar(&bridgeName, "name", "", "Bridge Name")
+	createBridgeCmd.Flags().StringVar(&bridgeType, "type", "linux-bridge", "Bridge Type")
+	createBridgeCmd.MarkFlagRequired("name")
+
+	destroyBridgeCmd.Flags().StringVar(&bridgeName, "name", "", "Bridge Name")
+	destroyBridgeCmd.MarkFlagRequired("name")
 
 }
 
@@ -105,12 +109,33 @@ var createCmd = &cobra.Command{
 	},
 }
 
-var bridgeCmd = &cobra.Command{
+var createBridgeCmd = &cobra.Command{
 	Use:   "bridge",
 	Short: "create a bridge",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		taskId := logger.GenerateTaskId()
+		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
+		o := orchastrator.VMManager(db, createVMOpts)
+		o.Network.Name = bridgeName
+		o.Network.Type = bridgeType
+		o.CreateBridgeHandler(ctx)
+		return nil
+	},
+}
+
+var destroyBridgeCmd = &cobra.Command{
+	Use:   "bridge",
+	Short: "destroy a bridge",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		taskId := logger.GenerateTaskId()
+		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
+
+		o := orchastrator.VMManager(db, createVMOpts)
+		o.Network.Name = bridgeName
+		o.DeleteBridgeHandler(ctx)
 		return nil
 	},
 }

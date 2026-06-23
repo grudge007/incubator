@@ -438,6 +438,82 @@ func (o *Orchastrator) RollbackHandler(ctx context.Context, pid, resourceId int,
 	logger.LogError(ctx, resourceId, "create-vm", "successfully rolled back resource", nil)
 }
 
-func (o *Orchastrator) CreateBridgeHandler() {
+func (o *Orchastrator) CreateBridgeHandler(ctx context.Context) error {
+	switch o.Network.Type {
+	case "linux-bridge":
+		ok, _, err := o.Network.CheckBridgeExist(o.Network.Name)
+		if err != nil {
+			logger.LogError(ctx, 0, "create-bridge", "failed to check if bridge exists", err)
+			return err
+		}
 
+		if ok {
+			err = fmt.Errorf("bridge %s already exists", o.Network.Name)
+			logger.LogError(ctx, 0, "create-bridge", "bridge already exists", err)
+			return err
+		}
+
+		err = o.Network.CreateBridge(o.Network.Name)
+		if err != nil {
+			logger.LogError(ctx, 0, "create-bridge", "failed to create linux bridge", err)
+			return err
+		}
+
+		err = o.Storage.InsertBridgeDetails(o.Network.Name, o.Network.Type)
+		if err != nil {
+			logger.LogError(ctx, 0, "create-bridge", "failed to insert bridge details into db", err)
+			_ = o.Network.DeleteBridgeByName(o.Network.Name)
+			return err
+		}
+		logger.LogSuccess(ctx, 0, "create-bridge", "successfully created bridge", o.Network.Name)
+	// case "ovs":
+	// 	fmt.Println("Not Implemeneted Yet!!")
+
+	default:
+		err := fmt.Errorf("invalid bridge type: %s", o.Network.Type)
+		logger.LogError(ctx, 0, "create-bridge", "invalid network type", err)
+		return err
+	}
+	return nil
+}
+
+func (o *Orchastrator) DeleteBridgeHandler(ctx context.Context) error {
+	bridgeType, err := o.Storage.FetchBridgeType(o.Network.Name)
+	if err != nil {
+		logger.LogError(ctx, 0, "delete-bridge", "failed to fetch bridge type from db", err)
+		return err
+	}
+
+	switch bridgeType {
+	case "linux-bridge":
+		ok, _, err := o.Network.CheckBridgeExist(o.Network.Name)
+		if err != nil {
+			logger.LogError(ctx, 0, "delete-bridge", "failed to check if bridge exists", err)
+			return err
+		}
+
+		if !ok {
+			err = fmt.Errorf("bridge %s does not exist", o.Network.Name)
+			logger.LogError(ctx, 0, "delete-bridge", "bridge not found", err)
+			return err
+		}
+		
+		err = o.Network.DeleteBridgeByName(o.Network.Name)
+		if err != nil {
+			logger.LogError(ctx, 0, "delete-bridge", "failed to delete bridge", err)
+			return err
+		}
+
+		err = o.Storage.DeleteResource("network_bridges", "name", o.Network.Name)
+		if err != nil {
+			logger.LogError(ctx, 0, "delete-bridge", "failed to delete bridge from db", err)
+			return err
+		}
+		logger.LogSuccess(ctx, 0, "delete-bridge", "successfully deleted bridge", o.Network.Name)
+	default:
+		err = fmt.Errorf("invalid bridge type: %s", bridgeType)
+		logger.LogError(ctx, 0, "delete-bridge", "invalid network type", err)
+		return err
+	}
+	return nil
 }

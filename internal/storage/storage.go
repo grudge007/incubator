@@ -340,6 +340,19 @@ func (d *DB) FetchBridgeId(bridgeName string) (int, error) {
 
 }
 
+func (d *DB) FetchBridgeType(bridgeName string) (string, error) {
+	var bridgeType string
+	query := "SELECT type FROM network_bridges WHERE name = ?"
+
+	err := d.Cli.QueryRow(query, bridgeName).Scan(&bridgeType)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch bridge id: %w", err)
+	}
+
+	return bridgeType, nil
+
+}
+
 func (d *DB) InsertDataDisk(resourceId int, diskImage, diskId string, detached bool) error {
 	query := `INSERT INTO data_disks 
 	(resource_id,
@@ -383,4 +396,13 @@ func (d *DB) FetchDataDisks(resourceId string) ([]string, error) {
 	}
 
 	return diskImages, nil
+}
+
+func (d *DB) InsertBridgeDetails(bridgeName, bridgeType string) error {
+	query := `INSERT INTO network_bridges (name, type) VALUES (? ,?)`
+	_, err := d.Cli.Exec(query, bridgeName, bridgeType)
+	if err != nil {
+		return fmt.Errorf("error inserting bridge details to db")
+	}
+	return nil
 }
