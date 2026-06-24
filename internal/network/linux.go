@@ -6,37 +6,22 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-type Network struct {
-	ID            int
-	Name          string
-	Type          string
-	DefaultBridge string
-}
-
-func InitNetwork() *Network {
-	return &Network{
-		DefaultBridge: "inbr0",
-	}
-}
-
-// func (n *Network) CreateIface()
-
-func (n *Network) CheckBridgeExist(bridgeName string) (bool, netlink.Link, error) {
+func (l *LinuxBridgeManager) CheckBridgeExist(bridgeName string) (bool, error) {
 	link, err := netlink.LinkByName(bridgeName)
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
-			return false, nil, nil
+			return false, nil
 		}
-		return false, nil, err
+		return false, err
 	}
 	if link.Type() == "bridge" {
-		return true, link, nil
+		return true, nil
 	}
 
-	return false, nil, fmt.Errorf("interface %s exists but is type %s, not bridge", bridgeName, link.Type())
+	return false, fmt.Errorf("interface %s exists but is type %s, not bridge", bridgeName, link.Type())
 }
 
-func (n *Network) CreateBridge(name string) error {
+func (l *LinuxBridgeManager) CreateBridge(name string) error {
 	// 1. Define the bridge link attributes
 	la := netlink.NewLinkAttrs()
 	la.Name = name
@@ -57,7 +42,7 @@ func (n *Network) CreateBridge(name string) error {
 	return nil
 }
 
-func (n *Network) CheckTapBridgePortExist(ifaceName string) (bool, error) {
+func (l *LinuxBridgeManager) CheckTapBridgePortExist(ifaceName string) (bool, error) {
 	link, err := netlink.LinkByName(ifaceName)
 	if err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
@@ -74,7 +59,14 @@ func (n *Network) CheckTapBridgePortExist(ifaceName string) (bool, error) {
 
 }
 
-func (n *Network) CreateTapBridgePort(bridgeName netlink.Link, ifaceName string) error {
+func (l *LinuxBridgeManager) CreateTapBridgePort(bridgeName string, ifaceName string) error {
+	// 1. Fetch the existing bridge link by its name
+	br, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		return fmt.Errorf("failed to find bridge %s: %w", bridgeName, err)
+	}
+
+	// 2. Define the TAP interface attributes
 	la := netlink.NewLinkAttrs()
 	la.Name = ifaceName
 
@@ -83,14 +75,19 @@ func (n *Network) CreateTapBridgePort(bridgeName netlink.Link, ifaceName string)
 		Mode:      netlink.TUNTAP_MODE_TAP,
 	}
 
+	// 3. Create the TAP interface in the kernel
 	if err := netlink.LinkAdd(tap); err != nil {
 		return fmt.Errorf("failed to create tap interface %s: %w", ifaceName, err)
 	}
 
-	if err := netlink.LinkSetMaster(tap, bridgeName); err != nil {
+	// 4. Attach the TAP interface to the bridge
+	if err := netlink.LinkSetMaster(tap, br); err != nil {
+		// Clean up the created link if attachment fails
+		_ = netlink.LinkDel(tap)
 		return fmt.Errorf("failed to attach TAP %s to bridge %s: %w", ifaceName, bridgeName, err)
 	}
 
+	// 5. Bring the TAP interface UP
 	if err := netlink.LinkSetUp(tap); err != nil {
 		return fmt.Errorf("failed to bring TAP %s UP: %w", ifaceName, err)
 	}
@@ -99,11 +96,11 @@ func (n *Network) CreateTapBridgePort(bridgeName netlink.Link, ifaceName string)
 	return nil
 }
 
-func (n *Network) GenerateTapDevName(i, resId int) string {
+func (l *LinuxBridgeManager) GenerateTapDevName(i, resId int) string {
 	return fmt.Sprintf("tap%d%d", resId, i)
 }
 
-func (n *Network) DeleteTapFromBridgeAndSystem(tapName string) error {
+func (l *LinuxBridgeManager) DeleteTapFromBridgeAndSystem(tapName string) error {
 	// 1. Fetch the TAP interface link
 	tapLink, err := netlink.LinkByName(tapName)
 	if err != nil {
@@ -133,7 +130,7 @@ func (n *Network) DeleteTapFromBridgeAndSystem(tapName string) error {
 	return nil
 }
 
-func (n *Network) DeleteBridgeByName(name string) error {
+func (l *LinuxBridgeManager) DeleteBridgeByName(name string) error {
 	// Create a bridge object with the specified name
 	bridge := &netlink.Bridge{
 		LinkAttrs: netlink.LinkAttrs{

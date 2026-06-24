@@ -17,13 +17,12 @@ type VM struct {
 	DiskType      string `json:"disk_type"`
 }
 
-type Interface struct {
-	Name      string
-	NetworkID int
-	Model     string
-}
-
 type Bridge struct{}
+
+type Interface struct {
+	Name string
+	Type string
+}
 
 type User struct {
 	Name       string   `yaml:"name"`

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"incubator/internal/logger"
 	"incubator/internal/model"
+	"incubator/internal/network"
 	"incubator/internal/orchastrator"
 	"incubator/internal/storage"
 	"log"
@@ -115,12 +116,22 @@ var createBridgeCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskId := logger.GenerateTaskId()
+
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
-		o := orchastrator.VMManager(db, createVMOpts)
-		o.Network.Name = bridgeName
-		o.Network.Type = bridgeType
-		o.CreateBridgeHandler(ctx)
+		netMgr, err := network.NewBridgeManager(bridgeType)
+		if err != nil {
+			return err
+		}
+
+		o := orchastrator.VMManager(db, createVMOpts, netMgr)
+		o.Interface.Name = bridgeName
+		o.Interface.Type = bridgeType
+
+		err = o.CreateBridgeHandler(ctx)
+		if err != nil {
+			return err
+		}
 		return nil
 	},
 }
@@ -131,11 +142,17 @@ var destroyBridgeCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		taskId := logger.GenerateTaskId()
+
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
-		o := orchastrator.VMManager(db, createVMOpts)
-		o.Network.Name = bridgeName
-		o.DeleteBridgeHandler(ctx)
+		o := orchastrator.VMManager(db, createVMOpts, nil)
+		o.Interface.Name = bridgeName
+
+		err := o.DeleteBridgeHandler(ctx)
+		if err != nil {
+			return err
+		}
+
 		return nil
 	},
 }
@@ -152,7 +169,7 @@ var vmCreateCmd = &cobra.Command{
 		taskId := logger.GenerateTaskId()
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
-		o := orchastrator.VMManager(db, createVMOpts)
+		o := orchastrator.VMManager(db, createVMOpts, nil)
 		o.Iface = ifaces
 		o.Disk = dataDisk
 		err := o.CreateVMHandler(ctx)
@@ -183,7 +200,7 @@ var vmDestroyCmd = &cobra.Command{
 		taskId := logger.GenerateTaskId()
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
-		o := orchastrator.VMManager(db, createVMOpts)
+		o := orchastrator.VMManager(db, createVMOpts, nil)
 
 		resourceId := args[0]
 		err := o.DestroyVMHandler(ctx, resourceId)
@@ -209,7 +226,7 @@ var shutdownVMCmd = &cobra.Command{
 		taskId := logger.GenerateTaskId()
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
-		o := orchastrator.VMManager(db, createVMOpts)
+		o := orchastrator.VMManager(db, createVMOpts, nil)
 		resourceId := args[0]
 		err := o.ShutdownVMHandler(ctx, resourceId)
 		if err != nil {
@@ -235,7 +252,7 @@ var startVMCmd = &cobra.Command{
 		taskId := logger.GenerateTaskId()
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
-		o := orchastrator.VMManager(db, createVMOpts)
+		o := orchastrator.VMManager(db, createVMOpts, nil)
 		resourceId := args[0]
 		err := o.StartVMHandler(ctx, resourceId)
 		if err != nil {
@@ -262,7 +279,7 @@ var listVmCmd = &cobra.Command{
 		taskId := logger.GenerateTaskId()
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
-		o := orchastrator.VMManager(db, createVMOpts)
+		o := orchastrator.VMManager(db, createVMOpts, nil)
 		var resourceId string
 		if len(args) > 0 {
 			resourceId = args[0]
@@ -284,7 +301,7 @@ var statusCmd = &cobra.Command{
 		taskId := logger.GenerateTaskId()
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
-		o := orchastrator.VMManager(db, createVMOpts)
+		o := orchastrator.VMManager(db, createVMOpts, nil)
 		var resourceId string
 		if len(args) > 0 {
 			resourceId = args[0]
@@ -296,51 +313,3 @@ var statusCmd = &cobra.Command{
 		return nil
 	},
 }
-
-// var launchCmd = &cobra.Command{
-// 	Use:   "launch",
-// 	Short: "Launch Resourse",
-// 	Args:  cobra.ExactArgs(1),
-// 	RunE: func(cmd *cobra.Command, args []string) error {
-// 		images := images.StoreImages()
-// 		vmName := qemu.GenerateVMName()
-// 		// diskName := fmt.Sprintf("%s.qcow2", vmName)
-// 		diskName := filepath.Join(diskStore, vmName, vmName+".qcow2")
-
-// 		createVMOpts = qemu.VM{
-// 			Name:          vmName,
-// 			MemoryMB:      2048,
-// 			CPUs:          1,
-// 			DiskSize:      20,
-// 			CloudInitFile: "/var/incubator/cloudinit/default.yaml",
-// 			DiskPath:      diskName,
-// 			Image:         args[0],
-// 			Status:        "running",
-// 		}
-// 		m := qemu.NewVMManager()
-// 		err := m.CreateVM(createVMOpts, images)
-// 		if err != nil {
-// 			return fmt.Errorf("qemu failed to create vm: %w", err)
-// 		}
-
-// 		fmt.Println("VM created successfully!")
-// 		return nil
-// 	},
-// }
-
-// var shutdownCmd = &cobra.Command{
-// 	Use:   "stop",
-// 	Short: "Poweroff Resource",
-// 	Args:  cobra.ExactArgs(1),
-// 	RunE: func(cmd *cobra.Command, args []string) error {
-// 		resourceName := args[0]
-// 		m := qemu.NewVMManager()
-// 		err := m.ShutdownVM(resourceName)
-// 		if err != nil {
-// 			return fmt.Errorf("qemu failed to stop vm: %w", err)
-// 		}
-// 		fmt.Println("VM stopped successfully!")
-// 		return nil
-
-// 	},
-// }

@@ -402,7 +402,27 @@ func (d *DB) InsertBridgeDetails(bridgeName, bridgeType string) error {
 	query := `INSERT INTO network_bridges (name, type) VALUES (? ,?)`
 	_, err := d.Cli.Exec(query, bridgeName, bridgeType)
 	if err != nil {
+		fmt.Println(err)
 		return fmt.Errorf("error inserting bridge details to db")
+
 	}
 	return nil
+}
+
+func (d *DB) VerifyIsBridgeIdle(bridgeName string) (bool, error) {
+	var inUse bool
+	query := `SELECT EXISTS (
+    SELECT 1
+    FROM network_bridges nb
+    JOIN networks n
+        ON n.bridge_id = nb.id
+    WHERE nb.name = ?
+	) AS in_use;`
+
+	err := d.Cli.QueryRow(query, bridgeName).Scan(&inUse)
+	if err != nil {
+		return false, fmt.Errorf("failed to query db")
+	}
+	return inUse, nil
+
 }

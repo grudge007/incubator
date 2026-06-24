@@ -9,25 +9,28 @@ import (
 	"incubator/internal/network"
 	"incubator/internal/qemu"
 	"incubator/internal/storage"
-	"log"
 	"strconv"
 )
 
 type Orchastrator struct {
-	Qemu    *qemu.QEMU
-	Storage *storage.DB
-	VM      *model.VM
-	Network *network.Network
-	Iface   []string
-	Disk    []int
+	Qemu          *qemu.QEMU
+	Storage       *storage.DB
+	VM            *model.VM
+	DefaultBridge string
+	Network       network.BridgeManager
+	Interface     *model.Interface
+	Iface         []string
+	Disk          []int
 }
 
-func VMManager(db *storage.DB, vmDetails model.VM) *Orchastrator {
+func VMManager(db *storage.DB, vmDetails model.VM, netMgr network.BridgeManager) *Orchastrator {
 	return &Orchastrator{
-		Storage: db,
-		Qemu:    qemu.Manager(vmDetails),
-		VM:      &vmDetails,
-		Network: network.InitNetwork(),
+		Storage:       db,
+		Qemu:          qemu.Manager(vmDetails),
+		VM:            &vmDetails,
+		Network:       netMgr,
+		DefaultBridge: "inbr0",
+		Interface:     &model.Interface{},
 	}
 }
 
@@ -38,13 +41,14 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 
 	o.VM.ResourceID, err = o.Storage.AllocateResourceID()
 	if err != nil {
-		return err
+		logger.LogError(ctx, 0, "create-vm", "failed to allocate resource ID", err)
+		return fmt.Errorf("failed to allocate resource ID: %w", err)
 	}
 
 	imagePath, err := o.Storage.FindImage(o.VM.Image, o.VM.Version)
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to find requested image", err)
-		return err
+		return fmt.Errorf("failed to find requested image: %w", err)
 	}
 
 	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "succesfully fetched the requested image", imagePath)
@@ -52,7 +56,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	o.VM.VNC, err = o.Storage.AllocateVNCPort()
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to allocate vnc port", err)
-		return err
+		return fmt.Errorf("failed to allocate vnc port: %w", err)
 	}
 
 	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "successfully allocated vnc port", strconv.Itoa(o.VM.VNC))
@@ -65,7 +69,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	vmResp, err := o.Qemu.PrepareVMCreation(ctx, o.VM, imagePath)
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create vm", err)
-		return err
+		return fmt.Errorf("failed to create vm: %w", err)
 	}
 	fmt.Printf("Resp : %v", vmResp)
 	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "successfully prepared VM disks", vmResp.Name)
@@ -74,7 +78,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert initial VM metadata", err)
 		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-		return err
+		return fmt.Errorf("failed to insert initial VM metadata: %w", err)
 	}
 
 	// fmt.Println("meta id: ", metaId)
@@ -82,20 +86,31 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	fmt.Println("o.iface", o.Iface)
 
 	for i := range len(o.Iface) {
-		ifaceName := o.Network.GenerateTapDevName(i, vmResp.ResourceID)
-		ifaces = append(ifaces, ifaceName)
 		var bridge string
-
 		if o.Iface[i] == "default" {
-			bridge = o.Network.DefaultBridge
+			bridge = o.DefaultBridge
 		} else {
 			bridge = o.Iface[i]
 		}
-		ok, link, err := o.Network.CheckBridgeExist(bridge)
+		bridgeType, err := o.Storage.FetchBridgeType(bridge)
+		if err != nil {
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			return err
+		}
+
+		netMgr, err := network.NewBridgeManager(bridgeType)
+		if err != nil {
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			return err
+		}
+		ifaceName := netMgr.GenerateTapDevName(i, vmResp.ResourceID)
+		ifaces = append(ifaces, ifaceName)
+
+		ok, err := netMgr.CheckBridgeExist(bridge)
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to check bridge exist", err)
 			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-			return err
+			return fmt.Errorf("failed to check bridge exist: %w", err)
 		}
 		if !ok {
 			err = fmt.Errorf("bridge %s does not exist", bridge)
@@ -104,19 +119,19 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 			return err
 		}
 
-		ok, err = o.Network.CheckTapBridgePortExist(ifaceName)
+		ok, err = netMgr.CheckTapBridgePortExist(ifaceName)
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to check tap port exist", err)
 			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-			return err
+			return fmt.Errorf("failed to check tap port exist: %w", err)
 		}
 
 		if !ok {
-			err = o.Network.CreateTapBridgePort(link, ifaceName)
+			err = netMgr.CreateTapBridgePort(bridge, ifaceName)
 			if err != nil {
 				logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create tap bridge port", err)
 				o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-				return err
+				return fmt.Errorf("failed to create tap bridge port: %w", err)
 			}
 		}
 		fmt.Printf("\nbridge: %s\n", bridge)
@@ -126,14 +141,14 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to fetch bridge id", err)
 			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-			return err
+			return fmt.Errorf("failed to fetch bridge id: %w", err)
 		}
 
 		err = o.Storage.InserNetworkIface(vmResp.ResourceID, bridgeId, ifaceName)
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert network interface into db", err)
 			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-			return err
+			return fmt.Errorf("failed to insert network interface into db: %w", err)
 		}
 
 	}
@@ -146,7 +161,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create data disk", err)
 			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-			return err
+			return fmt.Errorf("failed to create data disk: %w", err)
 		}
 
 		diskId := o.Qemu.DiskIdGen(i)
@@ -155,7 +170,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert data disk details into db", err)
 			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-			return err
+			return fmt.Errorf("failed to insert data disk details into db: %w", err)
 		}
 		diskImages = append(diskImages, diskImage)
 		fmt.Printf("diskImages: %v", diskImages)
@@ -173,14 +188,14 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		fmt.Println("\nfuckedup")
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to start vm via qemu", err)
 		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-		return err
+		return fmt.Errorf("failed to start vm via qemu: %w", err)
 	}
 
 	err = o.Storage.UpdateResourceStatusAndPid(strconv.Itoa(vmResp.ResourceID), "running", pid)
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to update status to running", err)
 		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
-		return err
+		return fmt.Errorf("failed to update status to running: %w", err)
 	}
 
 	fmt.Printf("pid: %d\n qemuArgs: %v\n", pid, qemuArgs)
@@ -195,7 +210,7 @@ func (o *Orchastrator) DestroyVMHandler(ctx context.Context, resourceID string) 
 
 	if o.VM.Status, err = o.Storage.ResourceStatus(resourceID); err != nil {
 		logger.LogError(ctx, resId, "destroy-vm", "failed to fetch resource status", err)
-		return err
+		return fmt.Errorf("failed to fetch resource status: %w", err)
 	}
 
 	if o.VM.Status != "stopped" {
@@ -206,26 +221,35 @@ func (o *Orchastrator) DestroyVMHandler(ctx context.Context, resourceID string) 
 
 	if err = o.Qemu.DestroyVM(ctx, resourceID); err != nil {
 		logger.LogError(ctx, resId, "destroy-vm", "failed to destroy vm via qemu", err)
-		return err
+		return fmt.Errorf("failed to destroy vm via qemu: %w", err)
 	}
 	ifaces, err := o.Storage.FetchInterfaces(resId)
 	if err != nil {
-		return err
+		logger.LogError(ctx, resId, "destroy-vm", "failed to fetch interfaces", err)
+		return fmt.Errorf("failed to fetch interfaces: %w", err)
 	}
 
 	for _, iface := range ifaces {
 		err = o.Network.DeleteTapFromBridgeAndSystem(iface)
 		if err != nil {
-			return err
+			logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
+			return fmt.Errorf("failed to delete tap interface %s: %w", iface, err)
 		}
 	}
 
-	_ = o.Storage.DeleteResource("networks", "resource_id", resourceID)
-	_ = o.Storage.DeleteResource("data_disks", "resource_id", resourceID)
+	if err = o.Storage.DeleteResource("networks", "resource_id", resourceID); err != nil {
+		logger.LogError(ctx, resId, "destroy-vm", "failed to delete networks from database", err)
+		return fmt.Errorf("failed to delete networks from database: %w", err)
+	}
+
+	if err = o.Storage.DeleteResource("data_disks", "resource_id", resourceID); err != nil {
+		logger.LogError(ctx, resId, "destroy-vm", "failed to delete data disks from database", err)
+		return fmt.Errorf("failed to delete data disks from database: %w", err)
+	}
 
 	if err = o.Storage.DeleteResource("metadata", "resource_id", resourceID); err != nil {
 		logger.LogError(ctx, resId, "destroy-vm", "failed to delete resource from database", err)
-		return err
+		return fmt.Errorf("failed to delete resource from database: %w", err)
 	}
 
 	logger.LogSuccess(ctx, resId, "destroy-vm", "successfully destroyed resource", resourceID)
@@ -239,7 +263,7 @@ func (o *Orchastrator) ShutdownVMHandler(ctx context.Context, resourceID string)
 	status, err := o.Storage.ResourceStatus(resourceID)
 	if err != nil {
 		logger.LogError(ctx, resId, "stop-vm", "failed to fetch resource status", err)
-		return err
+		return fmt.Errorf("failed to fetch resource status: %w", err)
 	}
 
 	if status == "stopped" {
@@ -251,7 +275,7 @@ func (o *Orchastrator) ShutdownVMHandler(ctx context.Context, resourceID string)
 	pid, err := o.Storage.FetchPid(resourceID)
 	if err != nil {
 		logger.LogError(ctx, resId, "stop-vm", "failed to fetch pid", err)
-		return err
+		return fmt.Errorf("failed to fetch pid: %w", err)
 	}
 	if pid <= 0 {
 		err = fmt.Errorf("cannot shutdown: invalid or missing PID (%d) for resource %s", pid, resourceID)
@@ -261,7 +285,7 @@ func (o *Orchastrator) ShutdownVMHandler(ctx context.Context, resourceID string)
 
 	if err = o.Qemu.ShutdownVM(ctx, pid); err != nil {
 		logger.LogError(ctx, resId, "stop-vm", "failed to shutdown vm via qemu", err)
-		return err
+		return fmt.Errorf("failed to shutdown vm via qemu: %w", err)
 	}
 
 	if err = o.Storage.UpdateResourceStatusAndPid(resourceID, "stopped", 0); err != nil {
@@ -280,7 +304,7 @@ func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) er
 	status, err := o.Storage.ResourceStatus(resourceId)
 	if err != nil {
 		logger.LogError(ctx, resId, "start-vm", "failed to fetch resource status", err)
-		return err
+		return fmt.Errorf("failed to fetch resource status: %w", err)
 	}
 
 	if status != "stopped" {
@@ -291,18 +315,20 @@ func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) er
 	vmDetails, err := o.Storage.FetchVmdetails(resourceId)
 	if err != nil {
 		logger.LogError(ctx, resId, "start-vm", "failed to fetch vm details", err)
-		return err
+		return fmt.Errorf("failed to fetch vm details: %w", err)
 	}
 	qemuArgs := o.Qemu.PrepareQemuArgs(vmDetails)
 	fmt.Printf("\nQEMU ARGS: %v\n", qemuArgs)
 	ifaces, err := o.Storage.FetchInterfaces(vmDetails.ResourceID)
 	if err != nil {
-		return err
+		logger.LogError(ctx, resId, "start-vm", "failed to fetch interfaces", err)
+		return fmt.Errorf("failed to fetch interfaces: %w", err)
 	}
 
 	diskImages, err := o.Storage.FetchDataDisks(resourceId)
 	if err != nil {
-		return err
+		logger.LogError(ctx, resId, "start-vm", "failed to fetch data disks", err)
+		return fmt.Errorf("failed to fetch data disks: %w", err)
 	}
 
 	qemuArgs = o.Qemu.SetupVMIfaceArgs(qemuArgs, ifaces)
@@ -311,20 +337,15 @@ func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) er
 	pid, err := o.Qemu.StartVM(ctx, qemuArgs)
 	if err != nil {
 		logger.LogError(ctx, resId, "start-vm", "failed to start vm via qemu", err)
-		return err
+		return fmt.Errorf("failed to start vm via qemu: %w", err)
 	}
 	fmt.Printf("Vm Details: %v \n", vmDetails)
 	fmt.Printf("Passed ID : %d\n, From DB: %d\n", resId, vmDetails.ResourceID)
 	err = o.Storage.UpdateResourceStatusAndPid(strconv.Itoa(resId), "running", pid)
 	if err != nil {
-		return err
+		logger.LogError(ctx, resId, "start-vm", "failed to update database state", err)
+		return fmt.Errorf("failed to update database state: %w", err)
 	}
-
-	// if err = o.Storage.UpdateResourceStatusAndPid(resourceId, "running", pid); err != nil {
-	// 	err = fmt.Errorf("resource started but failed to update DB state: %w", err)
-	// 	logger.LogError(ctx, resId, "start-vm", "failed to update database state", err)
-	// 	return err
-	// }
 
 	logger.LogSuccess(ctx, resId, "start-vm", "successfully started resource", resourceId)
 	return nil
@@ -337,7 +358,7 @@ func (o *Orchastrator) VmStatusHandler(ctx context.Context, resourceId string) e
 	resId, _ := strconv.Atoi(resourceId)
 	if err != nil {
 		logger.LogError(ctx, resId, "vm-status", "failed to fetch pid", err)
-		return err
+		return fmt.Errorf("failed to fetch pid: %w", err)
 	}
 	status = "running"
 
@@ -351,7 +372,7 @@ func (o *Orchastrator) VmStatusHandler(ctx context.Context, resourceId string) e
 		err = o.Storage.UpdateResourceStatusAndPid(resourceId, "stopped", pid)
 		if err != nil {
 			logger.LogError(ctx, resId, "vm-status", "failed to update vm state", err)
-			return err
+			return fmt.Errorf("failed to update vm state: %w", err)
 		}
 		logger.LogSuccess(ctx, resId, "vm-status", "successfully updated vm state", resourceId)
 
@@ -373,19 +394,19 @@ func (o *Orchastrator) VmStatusHandler(ctx context.Context, resourceId string) e
 func (o *Orchastrator) ListResources(ctx context.Context, resourceId string) error {
 	var vms []model.VM
 	var err error
-	var show_empty bool
 	if resourceId == "" {
 		vms, err = o.Storage.ListAllResource()
 		if err != nil {
-			fmt.Println("hiii")
 			logger.LogError(ctx, 0, "list-vm", "failed to list all resources", err)
-			log.Fatalf("Error getting VM list: %v", err)
+			return fmt.Errorf("failed to list all resources: %w", err)
 		}
 
 	} else {
 		vms, err = o.Storage.ListSingleResource(resourceId)
 		if err != nil {
-			show_empty = true
+			resId, _ := strconv.Atoi(resourceId)
+			logger.LogError(ctx, resId, "list-vm", "failed to list single resource", err)
+			return fmt.Errorf("failed to list resource %s: %w", resourceId, err)
 		}
 	}
 
@@ -394,7 +415,7 @@ func (o *Orchastrator) ListResources(ctx context.Context, resourceId string) err
 		"RES ID", "VM NAME", "CPUS", "MEMORY", "VNC", "PID", "OS IMAGE", "STATUS", "DISK")
 	fmt.Println("=================================================================================================================================")
 
-	if show_empty || len(vms) == 0 {
+	if len(vms) == 0 {
 		fmt.Println("                                                    No resources found.                                                          ")
 		fmt.Println("=================================================================================================================================")
 		return nil
@@ -428,9 +449,15 @@ func (o *Orchastrator) RollbackHandler(ctx context.Context, pid, resourceId int,
 			logger.LogError(ctx, resourceId, "create-vm", "failed to delete tap interface during rollback", err)
 		}
 	}
-	_ = o.Storage.DeleteResource("networks", "resource_id", strconv.Itoa(resourceId))
-	_ = o.Storage.DeleteResource("data_disks", "resource_id", strconv.Itoa(resourceId))
-	err := o.Storage.DeleteResource("metadata", "resource_id", strconv.Itoa(resourceId))
+	err := o.Storage.DeleteResource("networks", "resource_id", strconv.Itoa(resourceId))
+	if err != nil {
+		logger.LogError(ctx, resourceId, "create-vm", "failed to delete networks from db during rollback", err)
+	}
+	err = o.Storage.DeleteResource("data_disks", "resource_id", strconv.Itoa(resourceId))
+	if err != nil {
+		logger.LogError(ctx, resourceId, "create-vm", "failed to delete data disks from db during rollback", err)
+	}
+	err = o.Storage.DeleteResource("metadata", "resource_id", strconv.Itoa(resourceId))
 	if err != nil {
 		logger.LogError(ctx, resourceId, "create-vm", "failed to delete from db during rollback", err)
 		return
@@ -439,81 +466,88 @@ func (o *Orchastrator) RollbackHandler(ctx context.Context, pid, resourceId int,
 }
 
 func (o *Orchastrator) CreateBridgeHandler(ctx context.Context) error {
-	switch o.Network.Type {
-	case "linux-bridge":
-		ok, _, err := o.Network.CheckBridgeExist(o.Network.Name)
-		if err != nil {
-			logger.LogError(ctx, 0, "create-bridge", "failed to check if bridge exists", err)
-			return err
-		}
 
-		if ok {
-			err = fmt.Errorf("bridge %s already exists", o.Network.Name)
-			logger.LogError(ctx, 0, "create-bridge", "bridge already exists", err)
-			return err
-		}
+	ok, err := o.Network.CheckBridgeExist(o.Interface.Name)
+	if err != nil {
+		logger.LogError(ctx, 0, "create-bridge", "failed to check if bridge exists", err)
+		return fmt.Errorf("failed to check if bridge exists: %w", err)
+	}
 
-		err = o.Network.CreateBridge(o.Network.Name)
-		if err != nil {
-			logger.LogError(ctx, 0, "create-bridge", "failed to create linux bridge", err)
-			return err
-		}
-
-		err = o.Storage.InsertBridgeDetails(o.Network.Name, o.Network.Type)
-		if err != nil {
-			logger.LogError(ctx, 0, "create-bridge", "failed to insert bridge details into db", err)
-			_ = o.Network.DeleteBridgeByName(o.Network.Name)
-			return err
-		}
-		logger.LogSuccess(ctx, 0, "create-bridge", "successfully created bridge", o.Network.Name)
-	// case "ovs":
-	// 	fmt.Println("Not Implemeneted Yet!!")
-
-	default:
-		err := fmt.Errorf("invalid bridge type: %s", o.Network.Type)
-		logger.LogError(ctx, 0, "create-bridge", "invalid network type", err)
+	if ok {
+		err = fmt.Errorf("bridge %s already exists", o.Interface.Name)
+		logger.LogError(ctx, 0, "create-bridge", "bridge already exists", err)
 		return err
 	}
+
+	err = o.Network.CreateBridge(o.Interface.Name)
+	if err != nil {
+		logger.LogError(ctx, 0, "create-bridge", "failed to create linux bridge", err)
+		return fmt.Errorf("failed to create linux bridge: %w", err)
+	}
+
+	err = o.Storage.InsertBridgeDetails(o.Interface.Name, o.Interface.Type)
+	if err != nil {
+		logger.LogError(ctx, 0, "create-bridge", "failed to insert bridge details into db", err)
+		cleanupErr := o.Network.DeleteBridgeByName(o.Interface.Name)
+		if cleanupErr != nil {
+			logger.LogError(ctx, 0, "create-bridge", "failed to delete bridge during cleanup", cleanupErr)
+		}
+		return fmt.Errorf("failed to insert bridge details into db: %w", err)
+	}
+	logger.LogSuccess(ctx, 0, "create-bridge", "successfully created bridge", o.Interface.Name)
+	// case "ovs":
+
+	// default:
+	// 	err := fmt.Errorf("invalid bridge type: %s", o.Interface.Type)
+	// 	logger.LogError(ctx, 0, "create-bridge", "invalid network type", err)
+	// 	return err
+	// }
 	return nil
 }
 
 func (o *Orchastrator) DeleteBridgeHandler(ctx context.Context) error {
-	bridgeType, err := o.Storage.FetchBridgeType(o.Network.Name)
+	bridgeType, err := o.Storage.FetchBridgeType(o.Interface.Name)
 	if err != nil {
 		logger.LogError(ctx, 0, "delete-bridge", "failed to fetch bridge type from db", err)
+		return fmt.Errorf("failed to fetch bridge type from db: %w", err)
+	}
+	netMgr, err := network.NewBridgeManager(bridgeType)
+
+	inuse, err := o.Storage.VerifyIsBridgeIdle(o.Interface.Name)
+	if err != nil {
+		logger.LogError(ctx, 0, "delete-bridge", "failed to fetch bridge availability", err)
+		return fmt.Errorf("failed to fetch bridge availability: %w", err)
+	}
+	if inuse {
+		err = fmt.Errorf("bridge %s is in use", o.Interface.Name)
+		logger.LogError(ctx, 0, "delete-bridge", "bridge is in use", err)
 		return err
 	}
 
-	switch bridgeType {
-	case "linux-bridge":
-		ok, _, err := o.Network.CheckBridgeExist(o.Network.Name)
-		if err != nil {
-			logger.LogError(ctx, 0, "delete-bridge", "failed to check if bridge exists", err)
-			return err
-		}
+	ok, err := netMgr.CheckBridgeExist(o.Interface.Name)
+	if err != nil {
+		logger.LogError(ctx, 0, "delete-bridge", "failed to check if bridge exists", err)
+		return fmt.Errorf("failed to check if bridge exists: %w", err)
+	}
 
-		if !ok {
-			err = fmt.Errorf("bridge %s does not exist", o.Network.Name)
-			logger.LogError(ctx, 0, "delete-bridge", "bridge not found", err)
-			return err
-		}
-		
-		err = o.Network.DeleteBridgeByName(o.Network.Name)
-		if err != nil {
-			logger.LogError(ctx, 0, "delete-bridge", "failed to delete bridge", err)
-			return err
-		}
-
-		err = o.Storage.DeleteResource("network_bridges", "name", o.Network.Name)
-		if err != nil {
-			logger.LogError(ctx, 0, "delete-bridge", "failed to delete bridge from db", err)
-			return err
-		}
-		logger.LogSuccess(ctx, 0, "delete-bridge", "successfully deleted bridge", o.Network.Name)
-	default:
-		err = fmt.Errorf("invalid bridge type: %s", bridgeType)
-		logger.LogError(ctx, 0, "delete-bridge", "invalid network type", err)
+	if !ok {
+		err = fmt.Errorf("bridge %s does not exist", o.Interface.Name)
+		logger.LogError(ctx, 0, "delete-bridge", "bridge not found", err)
 		return err
 	}
+
+	err = netMgr.DeleteBridgeByName(o.Interface.Name)
+	if err != nil {
+		logger.LogError(ctx, 0, "delete-bridge", "failed to delete bridge", err)
+		return fmt.Errorf("failed to delete bridge: %w", err)
+	}
+
+	err = o.Storage.DeleteResource("network_bridges", "name", o.Interface.Name)
+	if err != nil {
+		logger.LogError(ctx, 0, "delete-bridge", "failed to delete bridge from db", err)
+		return fmt.Errorf("failed to delete bridge from db: %w", err)
+	}
+	logger.LogSuccess(ctx, 0, "delete-bridge", "successfully deleted bridge", o.Interface.Name)
+
 	return nil
 }
