@@ -36,7 +36,7 @@ func (q *QEMU) PrepareVMCreation(ctx context.Context, vmDetails *model.VM, image
 
 	logger.LogSuccess(ctx, vmDetails.ResourceID, "create-vm", "succesfully resized vm disk", strconv.Itoa(vmDetails.DiskSize))
 
-	cloudInitDisk, err := createCloudInitIso(q.CloudInitFile, diskDir)
+	cloudInitDisk, err := q.CreateCloudInitIso(q.CloudInitFile, diskDir)
 	if err != nil {
 		logger.LogError(ctx, vmDetails.ResourceID, "create-vm", "failed to generate cloud init disk", err)
 		return vmDetails, err

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 )
 
-func createCloudInitIso(cloudInitFile, diskDir string) (string, error) {
+func (q *QEMU) CreateCloudInitIso(cloudInitFile, diskDir string) (string, error) {
 	cloudInitDisk := filepath.Join(diskDir, "cloud-init-seed.img")
 	cmd := exec.Command(
 		"cloud-localds",

@@ -24,6 +24,12 @@ type Interface struct {
 	Type string
 }
 
+type ResourceIfaceInfo struct {
+	IfaceName  string // "tap10"
+	BridgeName string // "ovsbr0"
+	BridgeType string // "ovs"
+}
+
 type User struct {
 	Name       string   `yaml:"name"`
 	Sudo       string   `yaml:"sudo"`

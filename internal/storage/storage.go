@@ -426,3 +426,93 @@ func (d *DB) VerifyIsBridgeIdle(bridgeName string) (bool, error) {
 	return inUse, nil
 
 }
+
+func (d *DB) FetchIfaceInfoWithResId(resId int) ([]model.ResourceIfaceInfo, error) {
+	query := `SELECT 
+        n.tap_name,
+        b.name,
+        b.type
+    FROM 
+        networks n
+    JOIN 
+        network_bridges b ON n.bridge_id = b.id
+    WHERE 
+        n.resource_id = ?;`
+
+	rows, err := d.Cli.Query(query, resId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query database for resource %d: %w", resId, err)
+	}
+	// Defers should ideally be placed immediately after checking the resource error
+	defer rows.Close()
+
+	// Pre-allocating slice memory saves allocations if a resource has multiple interfaces
+	var infos []model.ResourceIfaceInfo
+
+	for rows.Next() {
+		var info model.ResourceIfaceInfo
+		err = rows.Scan(
+			&info.IfaceName,
+			&info.BridgeName,
+			&info.BridgeType,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan interface row: %w", err)
+		}
+
+		infos = append(infos, info)
+	}
+
+	// Always check rows.Err() after the loop finishes to catch errors that aborted the iteration
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration encountered an error: %w", err)
+	}
+
+	return infos, nil
+}
+
+func (d *DB) FetchBridgeDetails() ([]model.ResourceIfaceInfo, error) {
+	query := `SELECT 
+        n.tap_name,
+        b.name,
+        b.type
+    FROM 
+        networks n
+    JOIN 
+        network_bridges b ON n.bridge_id = b.id;`
+
+	rows, err := d.Cli.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query database for resource  %w", err)
+	}
+	// Defers should ideally be placed immediately after checking the resource error
+	defer rows.Close()
+
+	// Pre-allocating slice memory saves allocations if a resource has multiple interfaces
+	var infos []model.ResourceIfaceInfo
+
+	for rows.Next() {
+		var info model.ResourceIfaceInfo
+		err = rows.Scan(
+			&info.IfaceName,
+			&info.BridgeName,
+			&info.BridgeType,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan interface row: %w", err)
+		}
+
+		infos = append(infos, info)
+	}
+
+	// Always check rows.Err() after the loop finishes to catch errors that aborted the iteration
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration encountered an error: %w", err)
+	}
+
+	return infos, nil
+}
+
+// func (d *DB) FetchCloudInitDetailsByResId(resId int) (string, string) {
+// 	query := `SELECT `
+// }

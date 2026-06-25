@@ -170,7 +170,7 @@ var vmCreateCmd = &cobra.Command{
 		ctx := context.WithValue(context.Background(), logger.TaskIdKey, taskId)
 
 		o := orchastrator.VMManager(db, createVMOpts, nil)
-		o.Iface = ifaces
+		o.Bridges = ifaces
 		o.Disk = dataDisk
 		err := o.CreateVMHandler(ctx)
 		if err != nil {

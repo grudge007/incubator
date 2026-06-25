@@ -18,8 +18,9 @@ type Orchastrator struct {
 	VM            *model.VM
 	DefaultBridge string
 	Network       network.BridgeManager
+	PortMgr       network.PortManager
 	Interface     *model.Interface
-	Iface         []string
+	Bridges       []string
 	Disk          []int
 }
 
@@ -31,6 +32,7 @@ func VMManager(db *storage.DB, vmDetails model.VM, netMgr network.BridgeManager)
 		Network:       netMgr,
 		DefaultBridge: "inbr0",
 		Interface:     &model.Interface{},
+		PortMgr:       network.NewTapDevManager(),
 	}
 }
 
@@ -38,6 +40,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	var err error
 	var pid int
 	var ifaces []string
+	var bridgeType string
 
 	o.VM.ResourceID, err = o.Storage.AllocateResourceID()
 	if err != nil {
@@ -77,60 +80,67 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	_, err = o.Storage.InsertInitialVmMeta(vmResp)
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert initial VM metadata", err)
-		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 		return fmt.Errorf("failed to insert initial VM metadata: %w", err)
 	}
 
 	// fmt.Println("meta id: ", metaId)
-	fmt.Println("\n", len(o.Iface))
-	fmt.Println("o.iface", o.Iface)
-
-	for i := range len(o.Iface) {
+	fmt.Println("\n", len(o.Bridges))
+	fmt.Println("o.Bridges", o.Bridges)
+	for i := range len(o.Bridges) {
 		var bridge string
-		if o.Iface[i] == "default" {
+		if o.Bridges[i] == "default" {
 			bridge = o.DefaultBridge
 		} else {
-			bridge = o.Iface[i]
+			bridge = o.Bridges[i]
 		}
-		bridgeType, err := o.Storage.FetchBridgeType(bridge)
+		bridgeType, err = o.Storage.FetchBridgeType(bridge)
 		if err != nil {
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return err
 		}
 
 		netMgr, err := network.NewBridgeManager(bridgeType)
 		if err != nil {
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return err
 		}
-		ifaceName := netMgr.GenerateTapDevName(i, vmResp.ResourceID)
+		ifaceName := o.PortMgr.GenerateTapDevName(i, vmResp.ResourceID)
 		ifaces = append(ifaces, ifaceName)
+
+		fmt.Println("ifaces: ", ifaces)
 
 		ok, err := netMgr.CheckBridgeExist(bridge)
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to check bridge exist", err)
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return fmt.Errorf("failed to check bridge exist: %w", err)
 		}
 		if !ok {
 			err = fmt.Errorf("bridge %s does not exist", bridge)
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "bridge not found", err)
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return err
 		}
 
-		ok, err = netMgr.CheckTapBridgePortExist(ifaceName)
+		ok, err = o.PortMgr.CheckTapBridgePortExist(ifaceName)
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to check tap port exist", err)
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return fmt.Errorf("failed to check tap port exist: %w", err)
 		}
 
 		if !ok {
-			err = netMgr.CreateTapBridgePort(bridge, ifaceName)
+			err = o.PortMgr.CreateTapPort(ifaceName)
 			if err != nil {
 				logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create tap bridge port", err)
-				o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+				o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
+				return fmt.Errorf("failed to create tap bridge port: %w", err)
+			}
+			err = netMgr.AttachTapDevToBridge(bridge, ifaceName)
+			if err != nil {
+				logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create tap bridge port", err)
+				o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 				return fmt.Errorf("failed to create tap bridge port: %w", err)
 			}
 		}
@@ -140,14 +150,14 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to fetch bridge id", err)
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return fmt.Errorf("failed to fetch bridge id: %w", err)
 		}
 
 		err = o.Storage.InserNetworkIface(vmResp.ResourceID, bridgeId, ifaceName)
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert network interface into db", err)
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return fmt.Errorf("failed to insert network interface into db: %w", err)
 		}
 
@@ -160,7 +170,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		fmt.Println("i: ", i)
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to create data disk", err)
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return fmt.Errorf("failed to create data disk: %w", err)
 		}
 
@@ -169,7 +179,7 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 		err = o.Storage.InsertDataDisk(vmResp.ResourceID, diskImage, diskId, false)
 		if err != nil {
 			logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to insert data disk details into db", err)
-			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+			o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 			return fmt.Errorf("failed to insert data disk details into db: %w", err)
 		}
 		diskImages = append(diskImages, diskImage)
@@ -187,20 +197,19 @@ func (o *Orchastrator) CreateVMHandler(ctx context.Context) error {
 	if err != nil {
 		fmt.Println("\nfuckedup")
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to start vm via qemu", err)
-		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 		return fmt.Errorf("failed to start vm via qemu: %w", err)
 	}
 
 	err = o.Storage.UpdateResourceStatusAndPid(strconv.Itoa(vmResp.ResourceID), "running", pid)
 	if err != nil {
 		logger.LogError(ctx, o.VM.ResourceID, "create-vm", "failed to update status to running", err)
-		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces)
+		o.RollbackHandler(ctx, pid, o.VM.ResourceID, ifaces, bridgeType)
 		return fmt.Errorf("failed to update status to running: %w", err)
 	}
 
 	fmt.Printf("pid: %d\n qemuArgs: %v\n", pid, qemuArgs)
 	logger.LogSuccess(ctx, o.VM.ResourceID, "create-vm", "successfully created and started vm", vmResp.Name)
-
 	return nil
 }
 
@@ -223,19 +232,41 @@ func (o *Orchastrator) DestroyVMHandler(ctx context.Context, resourceID string) 
 		logger.LogError(ctx, resId, "destroy-vm", "failed to destroy vm via qemu", err)
 		return fmt.Errorf("failed to destroy vm via qemu: %w", err)
 	}
-	ifaces, err := o.Storage.FetchInterfaces(resId)
-	if err != nil {
-		logger.LogError(ctx, resId, "destroy-vm", "failed to fetch interfaces", err)
-		return fmt.Errorf("failed to fetch interfaces: %w", err)
+	var ifaceData []model.ResourceIfaceInfo
+	ifaceData, err = o.Storage.FetchIfaceInfoWithResId(resId)
+
+	// ifaces, err := o.Storage.FetchInterfaces(resId)
+	// if err != nil {
+	// 	logger.LogError(ctx, resId, "destroy-vm", "failed to fetch interfaces", err)
+	// 	return fmt.Errorf("failed to fetch interfaces: %w", err)
+	// }
+	for i, ifaceInfo := range ifaceData {
+		netMgr, err := network.NewBridgeManager(ifaceInfo.BridgeType)
+		if err != nil {
+			// logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
+			return fmt.Errorf("failed to delete tap interface %s: %w", err)
+		}
+		err = netMgr.DeleteTapFromBridge(ifaceInfo.IfaceName)
+		if err != nil {
+			// logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
+			return fmt.Errorf("failed to delete tap interface %s: %w", err)
+		}
+		err = o.PortMgr.DeleteTapFromSystem(ifaceInfo.IfaceName)
+		if err != nil {
+			// logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
+			return fmt.Errorf("failed to delete tap interface %s: %w", err)
+		}
+		fmt.Println(i)
 	}
 
-	for _, iface := range ifaces {
-		err = o.Network.DeleteTapFromBridgeAndSystem(iface)
-		if err != nil {
-			logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
-			return fmt.Errorf("failed to delete tap interface %s: %w", iface, err)
-		}
-	}
+	// for _, iface := range ifaces {
+	// 	o.Storage.Fetch
+	// 	err = o.PortMgr.DeleteTapFromBridge(iface)
+	// 	if err != nil {
+	// 		logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
+	// 		return fmt.Errorf("failed to delete tap interface %s: %w", iface, err)
+	// 	}
+	// }
 
 	if err = o.Storage.DeleteResource("networks", "resource_id", resourceID); err != nil {
 		logger.LogError(ctx, resId, "destroy-vm", "failed to delete networks from database", err)
@@ -317,6 +348,7 @@ func (o *Orchastrator) StartVMHandler(ctx context.Context, resourceId string) er
 		logger.LogError(ctx, resId, "start-vm", "failed to fetch vm details", err)
 		return fmt.Errorf("failed to fetch vm details: %w", err)
 	}
+
 	qemuArgs := o.Qemu.PrepareQemuArgs(vmDetails)
 	fmt.Printf("\nQEMU ARGS: %v\n", qemuArgs)
 	ifaces, err := o.Storage.FetchInterfaces(vmDetails.ResourceID)
@@ -441,15 +473,35 @@ func (o *Orchastrator) ListResources(ctx context.Context, resourceId string) err
 	return nil
 }
 
-func (o *Orchastrator) RollbackHandler(ctx context.Context, pid, resourceId int, ifaces []string) {
+func (o *Orchastrator) RollbackHandler(ctx context.Context, pid, resourceId int, ifaces []string, bridgeType string) {
 	o.Qemu.Rollback(pid, resourceId)
-	for i := 0; i < len(ifaces); i++ {
-		err := o.Network.DeleteTapFromBridgeAndSystem(ifaces[i])
+	var ifaceData []model.ResourceIfaceInfo
+	ifaceData, err := o.Storage.FetchIfaceInfoWithResId(resourceId)
+
+	// ifaces, err := o.Storage.FetchInterfaces(resId)
+	// if err != nil {
+	// 	logger.LogError(ctx, resId, "destroy-vm", "failed to fetch interfaces", err)
+	// 	return fmt.Errorf("failed to fetch interfaces: %w", err)
+	// }
+	for _, ifaceInfo := range ifaceData {
+		netMgr, err := network.NewBridgeManager(ifaceInfo.BridgeType)
 		if err != nil {
-			logger.LogError(ctx, resourceId, "create-vm", "failed to delete tap interface during rollback", err)
+			// logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
+			// return fmt.Errorf("failed to delete tap interface %s: %w", err)
+		}
+		err = netMgr.DeleteTapFromBridge(ifaceInfo.IfaceName)
+		if err != nil {
+			// logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
+			// return fmt.Errorf("failed to delete tap interface %s: %w", err)
+		}
+		err = o.PortMgr.DeleteTapFromSystem(ifaceInfo.IfaceName)
+		if err != nil {
+			// logger.LogError(ctx, resId, "destroy-vm", fmt.Sprintf("failed to delete tap interface %s", iface), err)
+			// return fmt.Errorf("failed to delete tap interface %s: %w", err)
 		}
 	}
-	err := o.Storage.DeleteResource("networks", "resource_id", strconv.Itoa(resourceId))
+
+	err = o.Storage.DeleteResource("networks", "resource_id", strconv.Itoa(resourceId))
 	if err != nil {
 		logger.LogError(ctx, resourceId, "create-vm", "failed to delete networks from db during rollback", err)
 	}
@@ -551,3 +603,18 @@ func (o *Orchastrator) DeleteBridgeHandler(ctx context.Context) error {
 
 	return nil
 }
+
+func (o *Orchastrator) ListBridges() error {
+	var bridgeDetails []model.ResourceIfaceInfo
+	bridgeDetails, err := o.Storage.FetchBridgeDetails()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(bridgeDetails)
+	return nil
+}
+
+// func (o *Orchastrator) RegenerateCloudInit(resourceId int) error {
+
+// }

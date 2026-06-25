@@ -28,7 +28,7 @@ func (q *QEMU) ShutdownVM(ctx context.Context, pid int) error {
 			fmt.Println("Succesfully Stopped Resource")
 			return nil
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(2 * time.Second)
 	}
 
 	if err = proc.Signal(syscall.SIGKILL); err != nil {
